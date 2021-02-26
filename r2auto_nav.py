@@ -30,11 +30,13 @@ speedchange = 0.05
 occ_bins = [-1, 0, 100, 101]
 stop_distance = 0.25
 front_angle = 30
-front_angles = range(-front_angle,front_angle+1,1)
+front_angles = range(-front_angle, front_angle+1, 1)
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
+
+
 def euler_from_quaternion(x, y, z, w):
     """
     Convert a quaternion into euler angles (roll, pitch, yaw)
@@ -55,17 +57,18 @@ def euler_from_quaternion(x, y, z, w):
     t4 = +1.0 - 2.0 * (y * y + z * z)
     yaw_z = math.atan2(t3, t4)
 
-    return roll_x, pitch_y, yaw_z # in radians
+    return roll_x, pitch_y, yaw_z  # in radians
+
 
 class AutoNav(Node):
 
     def __init__(self):
         super().__init__('auto_nav')
-        
+
         # create publisher for moving TurtleBot
-        self.publisher_ = self.create_publisher(Twist,'cmd_vel',10)
+        self.publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
         # self.get_logger().info('Created publisher')
-        
+
         # create subscription to track orientation
         self.odom_subscription = self.create_subscription(
             Odometry,
@@ -78,7 +81,7 @@ class AutoNav(Node):
         self.roll = 0
         self.pitch = 0
         self.yaw = 0
-        
+
         # create subscription to track occupancy
         self.occ_subscription = self.create_subscription(
             OccupancyGrid,
@@ -87,7 +90,7 @@ class AutoNav(Node):
             qos_profile_sensor_data)
         self.occ_subscription  # prevent unused variable warning
         self.occdata = np.array([])
-        
+
         # create subscription to track lidar
         self.scan_subscription = self.create_subscription(
             LaserScan,
@@ -97,12 +100,11 @@ class AutoNav(Node):
         self.scan_subscription  # prevent unused variable warning
         self.laser_range = np.array([])
 
-
     def odom_callback(self, msg):
         # self.get_logger().info('In odom_callback')
-        orientation_quat =  msg.pose.pose.orientation
-        self.roll, self.pitch, self.yaw = euler_from_quaternion(orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
-
+        orientation_quat = msg.pose.pose.orientation
+        self.roll, self.pitch, self.yaw = euler_from_quaternion(
+            orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
 
     def occ_callback(self, msg):
         self.get_logger().info('In occ_callback')
@@ -119,10 +121,9 @@ class AutoNav(Node):
         oc2 = msgdata + 1
         # reshape to 2D array using column order
         # self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width,order='F'))
-        self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width))
+        self.occdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
         # print to file
         np.savetxt(mapfile, self.occdata)
-
 
     def scan_callback(self, msg):
         # self.get_logger().info('In scan_callback')
@@ -131,26 +132,26 @@ class AutoNav(Node):
         # print to file
         np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
-        self.laser_range[self.laser_range==0] = np.nan
-
+        self.laser_range[self.laser_range == 0] = np.nan
 
     # function to rotate the TurtleBot
+
     def rotatebot(self, rot_angle):
         # self.get_logger().info('In rotatebot')
         # create Twist object
         twist = Twist()
-        
+
         # get current yaw angle
         current_yaw = self.yaw
         # log the info
         self.get_logger().info('Current: %f' % math.degrees(current_yaw))
         # we are going to use complex numbers to avoid problems when the angles go from
         # 360 to 0, or from -180 to 180
-        c_yaw = complex(math.cos(current_yaw),math.sin(current_yaw))
+        c_yaw = complex(math.cos(current_yaw), math.sin(current_yaw))
         # calculate desired yaw
         target_yaw = current_yaw + math.radians(rot_angle)
         # convert to complex notation
-        c_target_yaw = complex(math.cos(target_yaw),math.sin(target_yaw))
+        c_target_yaw = complex(math.cos(target_yaw), math.sin(target_yaw))
         self.get_logger().info('Desired: %f' % math.degrees(cmath.phase(c_target_yaw)))
         # divide the two complex numbers to get the change in direction
         c_change = c_target_yaw / c_yaw
@@ -173,7 +174,7 @@ class AutoNav(Node):
             rclpy.spin_once(self)
             current_yaw = self.yaw
             # convert the current yaw to complex form
-            c_yaw = complex(math.cos(current_yaw),math.sin(current_yaw))
+            c_yaw = complex(math.cos(current_yaw), math.sin(current_yaw))
             # self.get_logger().info('Current Yaw: %f' % math.degrees(current_yaw))
             # get difference in angle between current and target
             c_change = c_target_yaw / c_yaw
@@ -187,13 +188,13 @@ class AutoNav(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
-
     def pick_direction(self):
         # self.get_logger().info('In pick_direction')
         if self.laser_range.size != 0:
             # use nanargmax as there are nan's in laser_range added to replace 0's
             lr2i = np.nanargmax(self.laser_range)
-            self.get_logger().info('Picked direction: %d %f m' % (lr2i, self.laser_range[lr2i]))
+            self.get_logger().info('Picked direction: %d %f m' %
+                                   (lr2i, self.laser_range[lr2i]))
         else:
             lr2i = 0
             self.get_logger().info('No data!')
@@ -211,7 +212,6 @@ class AutoNav(Node):
         time.sleep(1)
         self.publisher_.publish(twist)
 
-
     def stopbot(self):
         self.get_logger().info('In stopbot')
         # publish to cmd_vel to move TurtleBot
@@ -220,7 +220,6 @@ class AutoNav(Node):
         twist.angular.z = 0.0
         # time.sleep(1)
         self.publisher_.publish(twist)
-
 
     def mover(self):
         try:
@@ -235,24 +234,25 @@ class AutoNav(Node):
                 if self.laser_range.size != 0:
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
-                    lri = (self.laser_range[front_angles]<float(stop_distance)).nonzero()
+                    lri = (self.laser_range[front_angles]
+                           < float(stop_distance)).nonzero()
                     # self.get_logger().info('Distances: %s' % str(lri))
 
                     # if the list is not empty
-                    if(len(lri[0])>0):
+                    if(len(lri[0]) > 0):
                         # stop moving
                         self.stopbot()
                         # find direction with the largest distance from the Lidar
                         # rotate to that direction
                         # start moving
                         self.pick_direction()
-                    
+
                 # allow the callback functions to run
                 rclpy.spin_once(self)
 
         except Exception as e:
             print(e)
-        
+
         # Ctrl-c detected
         finally:
             # stop moving
