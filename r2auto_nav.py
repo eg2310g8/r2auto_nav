@@ -24,16 +24,21 @@ import numpy as np
 import math
 import cmath
 import time
+import tf2_ros
+from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
+import scipy.stats
+from PIL import Image
 
 # constants
-rotatechange = 0.1
-speedchange = 0.05
-occ_bins = [-1, 0, 100, 101]
+rotatechange = 1
+speedchange = 0.22
+occ_bins = [-1, 0, 50, 100]
 stop_distance = 0.25
 front_angle = 30
 front_angles = range(-front_angle, front_angle+1, 1)
 scanfile = 'lidar.txt'
-mapfile = 'map.txt'
+mapfile = 'mapnew.txt'
+map_bg_color = 1
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
@@ -115,7 +120,9 @@ class AutoNav(Node):
             qos_profile_sensor_data)
         self.occ_subscription  # prevent unused variable warning
         self.occdata = np.array([])
-
+        self.tfBuffer = tf2_ros.Buffer()
+        self.tfListener = tf2_ros.TransformListener(self.tfBuffer,self)
+        
         # create subscription to track lidar
         self.scan_subscription = self.create_subscription(
             LaserScan,
@@ -135,20 +142,127 @@ class AutoNav(Node):
         self.get_logger().info('In occ_callback')
         # create numpy array
         msgdata = np.array(msg.data)
-        # compute histogram to identify percent of bins with -1
+        # compute histogram to identify percent of bins with -1, values btw 1 and below 50
+        # btw 50 and 100.
+        occ_counts, edges, binnum = scipy.stats.binned_statistic(msgdata, np.nan, statistic='count', bins=occ_bins)
         # occ_counts = np.histogram(msgdata,occ_bins)
         # calculate total number of bins
         # total_bins = msg.info.width * msg.info.height
         # log the info
         # self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0][0], occ_counts[0][1], occ_counts[0][2], total_bins))
 
-        # make msgdata go from 0 instead of -1, reshape into 2D
-        oc2 = msgdata + 1
-        # reshape to 2D array using column order
-        # self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width,order='F'))
-        self.occdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
-        # print to file
-        np.savetxt(mapfile, self.occdata)
+        # find transform to obtain base_link coordinates in the map frame
+        # lookup_transform(target_frame, source_frame, time)
+        try:
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        except (LookupException, ConnectivityException, ExtrapolationException) as e:
+            self.get_logger().info('No transformation found')
+            return
+
+        # get start location !
+
+        cur_pos = trans.transform.translation
+        cur_rot = trans.transform.rotation
+        # self.get_logger().info('Trans: %f, %f' % (cur_pos.x, cur_pos.y))
+        # convert quaternion to Euler angles
+        roll, pitch, yaw = euler_from_quaternion(cur_rot.x,cur_rot.y, cur_rot.z, cur_rot.w)
+        # self.get_logger().info('Rot-Yaw: R: %f D: %f' % (yaw, np.degrees(yaw)))
+        
+        # get map resolution
+        map_res = msg.info.resolution
+        # get map origin struct has field of x,y, and z
+        map_origin = msg.info.origin.position
+        
+        # get map width and height
+        iwidth = msg.info.width
+        iheight = msg.info.height
+
+         # get map grid positions for x,y position
+        grid_x = round((cur_pos.x - map_origin.x)/ map_res)
+        grid_y = round((cur_pos.y - map_origin.y)/ map_res)
+        self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
+        
+        '''
+        # get goal location !
+        goal_x = 0
+        goal_y = 0
+        for i in range(0,msg.info.width):
+            for j in range(grid_y,0,-1):
+                goal_x = i
+                goal_y = j
+        self.get_logger().info('Goal Y: %i Goal X: %i' % (goal_y,goal_x))
+        '''
+
+        # binnum go from 1 to 3 so we can use uint8
+        # convert into 2D array using column order
+        odata = np.uint8(binnum.reshape(msg.info.height,msg.info.width))
+        # set current robot location to 0
+        odata[grid_y][grid_x] = 0
+        # create image from 2D array using PIL
+        img = Image.fromarray(odata)
+        # find center of image
+        i_centerx = iwidth/2
+        i_centery = iheight/2
+        # find how much to shift the image to move grid_x and grid_y to center of image
+        shift_x = round(grid_x - i_centerx)
+        shift_y = round(grid_y - i_centery)
+        # self.get_logger().info('Shift Y: %i Shift X: %i' % (shift_y, shift_x))
+
+        # pad image to move robot position to the center
+        # adapted from https://note.nkmk.me/en/python-pillow-add-margin-expand-canvas/ 
+        left = 0
+        right = 0
+        top = 0
+        bottom = 0
+        if shift_x > 0:
+            # pad right margin
+            right = 2 * shift_x
+        else:
+            # pad left margin
+            left = 2 * (-shift_x)
+
+        if shift_y > 0:
+            # pad bottom margin
+            bottom = 2 * shift_y
+        else:
+            # pad top margin
+            top = 2 * (-shift_y)
+
+        # create new image
+        new_width = iwidth + right + left
+        new_height = iheight + top + bottom
+        img_transformed = Image.new(img.mode, (new_width, new_height), map_bg_color)
+        img_transformed.paste(img, (left, top))
+
+        # rotate by 90 degrees so that the forward direction is at the top of the image
+        rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
+        
+        # convert rotated image to array
+        new_map = np.asarray(rotated)
+
+        # find the point where array = 0, that is the start location
+        result = new_map.where(arr == 0)
+
+        coordinates = list(zip(result[0], result[1]))
+        start_x, start_y = coordinates[0]
+        # self.get_logger().info('Start_X: %i Start_Y: %i' % (start_x, start_y))
+        
+
+
+
+        # for all the occupied points(=2), make the 3 closest cells black also
+
+        # find goal location
+        # this will not work!! need to start from around the turtlebot and spin
+        '''
+        goal_x = 0
+        goal_y = 0
+        for i in range(0,msg.info.width):
+            for j in range(grid_y,0,-1):
+                goal_x = i
+                goal_y = j
+        self.get_logger().info('Goal Y: %i Goal X: %i' % (goal_y,goal_x))
+        '''
 
     def scan_callback(self, msg):
         # self.get_logger().info('In scan_callback')
@@ -213,6 +327,49 @@ class AutoNav(Node):
         twist.angular.z = 0.0
         # stop the rotation
         self.publisher_.publish(twist)
+    '''
+    # find closest unexplored point (input: occupancy grid, current location, output: end location)
+    def whereami(self,msg):
+        # find transform to obtain base_link coordinates in the map frame
+        # lookup_transform(target_frame, source_frame, time)
+        try:
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        except (LookupException, ConnectivityException, ExtrapolationException) as e:
+            self.get_logger().info('No transformation found')
+            return
+
+        cur_pos = trans.transform.translation
+        cur_rot = trans.transform.rotation
+        # self.get_logger().info('Trans: %f, %f' % (cur_pos.x, cur_pos.y))
+        # convert quaternion to Euler angles
+        roll, pitch, yaw = euler_from_quaternion(cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
+        # self.get_logger().info('Rot-Yaw: R: %f D: %f' % (yaw, np.degrees(yaw)))
+
+        # get map resolution
+        map_res = msg.info.resolution
+        # get map origin struct has fields of x, y, and z
+        map_origin = msg.info.origin.position
+        # get map grid positions for x, y position
+        grid_x = round((cur_pos.x - map_origin.x) / map_res)
+        grid_y = round(((cur_pos.y - map_origin.y) / map_res))
+        # self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
+
+        return [grid_x,grid_y]
+
+    def wheretogo(self,[start_x,start_y]):
+        navdata = self.occdata
+
+
+
+
+
+    # find way (fastest?) from start point to end point (input: start,end,occupancy grid output: path instructions)
+    def findpath(self,[start_x,start_y],[end_x,end_y]):
+
+
+
+    # translate way into instructions for turtlebot (
+    '''
 
     def pick_direction(self):
         # self.get_logger().info('In pick_direction')

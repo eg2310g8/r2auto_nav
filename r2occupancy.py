@@ -50,7 +50,7 @@ class Occupy(Node):
         # calculate total number of bins
         total_bins = iwidth * iheight
         # log the info
-        # self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0], occ_counts[1], occ_counts[2], total_bins))
+        self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0], occ_counts[1], occ_counts[2], total_bins))
 
         # binnum go from 1 to 3 so we can use uint8
         # convert into 2D array using column order
