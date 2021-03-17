@@ -19,6 +19,7 @@ from geometry_msgs.msg import Twist
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
+from astar_python.astar import Astar
 import numpy as np
 import math
 import cmath
@@ -58,6 +59,30 @@ def euler_from_quaternion(x, y, z, w):
     yaw_z = math.atan2(t3, t4)
 
     return roll_x, pitch_y, yaw_z  # in radians
+
+
+def getListOfPath(currMap, start, end):
+    mat = []
+    innerMat = []
+
+    for i in currMap:
+        for j in i:
+            if j == 1:
+                # this means that this is unexplored
+                innerMat.append(0)
+            elif j == 2:
+                # this means this is explored & unoccupied
+                innerMat.append(0)
+            else:
+                # this means this is an obstacle
+                innerMat.append(None)
+        mat.append(innerMat)
+        innerMat = []
+
+    astar = Astar(mat)
+    result = astar.run(start, end)
+    print(result)
+    return result
 
 
 class AutoNav(Node):
@@ -137,6 +162,7 @@ class AutoNav(Node):
     # function to rotate the TurtleBot
 
     def rotatebot(self, rot_angle):
+        # rotate_angle in radians
         # self.get_logger().info('In rotatebot')
         # create Twist object
         twist = Twist()
