@@ -2,3 +2,4 @@ lidar.txt
 map.txt
 .vscode
 .pycache
+__pycache__
