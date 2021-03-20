@@ -162,7 +162,6 @@ class AutoNav(Node):
             return
 
         # get start location !
-
         cur_pos = trans.transform.translation
         cur_rot = trans.transform.rotation
         # self.get_logger().info('Trans: %f, %f' % (cur_pos.x, cur_pos.y))
@@ -182,26 +181,100 @@ class AutoNav(Node):
          # get map grid positions for x,y position
         grid_x = round((cur_pos.x - map_origin.x)/ map_res)
         grid_y = round((cur_pos.y - map_origin.y)/ map_res)
-        self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
+        # self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
         
-        '''
-        # get goal location !
-        goal_x = 0
-        goal_y = 0
-        for i in range(0,msg.info.width):
-            for j in range(grid_y,0,-1):
-                goal_x = i
-                goal_y = j
-        self.get_logger().info('Goal Y: %i Goal X: %i' % (goal_y,goal_x))
-        '''
-
         # binnum go from 1 to 3 so we can use uint8
         # convert into 2D array using column order
         odata = np.uint8(binnum.reshape(msg.info.height,msg.info.width))
+        
+        # for all the occupied points(=3), make the closest woah=1 cell(s) black also
+        result_wall = np.where(odata == 3)
+        coordinates_wall = list(zip(result_wall[0],result_wall[1]))
+
+        woah = 1
+        for wall_x,wall_y in [coord for coord in coordinates_wall]:
+            for i in range(-woah,woah):
+                for j in range(-woah,woah):
+                    with suppress(IndexError):
+                        odata[wall_x + i,wall_y + j] = 3
+        
+
+        # find goal location
+        result_unexplored = np.where(odata == 1)
+        coordinates_unexplored = list(zip(result_unexplored[0],result_unexplored[1]))
+        # print(coordinates_unexplored)
+        
+        # def check_if_neighbour_explored(a,b):
+        def check_if_neighbour_explored(place):
+            a = place[0]
+            b = place[1]
+            for i in [-1,0,1]:
+                for j in [-1,0,1]:
+                    # print(i,j)
+                    with suppress(IndexError):
+                        # print("checking new_map[%i %i]" % (a+i,b+j))
+                        if odata[a+i,b+j] == 2:
+                            return True 
+            return False
+
+        correct_coordinates = []
+
+        for coord in coordinates_unexplored:
+            if check_if_neighbour_explored(coord) == True:
+                correct_coordinates.append(coord)
+        
+        #print("checking if neighbours explored")
+        #print(correct_coordinates)
+        
+        def check_if_neighbour_wall(place):
+            a = place[0]
+            b = place[1]
+            for i in range(-2,2):
+                for j in range(-2,2):
+                    with suppress(IndexError):
+                        if odata[a+i,b+j] == 3:
+                            return True
+            return False
+
+        correcter_coordinates = []
+        for coord in correct_coordinates:
+            if check_if_neighbour_wall(coord) == False:
+                correcter_coordinates.append(coord)
+        
+        correct_coordinates = correcter_coordinates
+
+        # print(correct_coordinates)
+
+        def get_distance(place):
+            return (place[0]-grid_x)**2 + (place[1]-grid_y)**2
+
+        distances_between = list(map(get_distance,correct_coordinates))
+        # print(distances_between)
+        min_dist = np.amin(distances_between)
+        goals = np.where(distances_between == min_dist)
+        # print(goals)
+        goal_index = goals[0][0]
+        # print(goal_index)
+        goal_x, goal_y = correct_coordinates[goal_index]
+        # self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
+        
+
+        self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
+        self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
+        getListOfPath(odata,(grid_x,grid_y),(goal_x,goal_y))
+
         # set current robot location to 0
         odata[grid_y][grid_x] = 0
+        
+        # set goal location to 0
+        woahhey = 3
+        for i in range(-woahhey,woahhey):
+            for j in range(-woahhey,woahhey):
+                odata[goal_x + i,goal_y + j] = 0
+        # print("Goal edits done")
         # create image from 2D array using PIL
         img = Image.fromarray(odata)
+        # print("odata to img done")
         # find center of image
         i_centerx = iwidth/2
         i_centery = iheight/2
@@ -235,98 +308,11 @@ class AutoNav(Node):
         new_height = iheight + top + bottom
         img_transformed = Image.new(img.mode, (new_width, new_height), map_bg_color)
         img_transformed.paste(img, (left, top))
-
+        
         # rotate by 90 degrees so that the forward direction is at the top of the image
         rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
-        
-        # convert rotated image to array
-        new_map = np.copy(np.asarray(rotated))
-
-        # find the point where array = 0, that is the start location
-        result_start = np.where(new_map == 0)
-        # print('coordinates')
-        coordinates_start = list(zip(result_start[0], result_start[1]))
-        # print('startxandy')
-        start_x, start_y = coordinates_start[0]
-        self.get_logger().info('Start_X: %i Start_Y: %i' % (start_x, start_y))
-        
-        # for all the occupied points(=2), make the 3 closest cells black also
-        # result_walls = np.where(new_map == 3)
-        # coordinates_walls = list(zip(result_walls[0], result_walls[1]))
-        result_wall = np.where(new_map == 3)
-        coordinates_wall = list(zip(result_wall[0],result_wall[1]))
-
-        woah = 1
-        for wall_x,wall_y in [coord for coord in coordinates_wall]:
-            for i in range(-woah,woah):
-                for j in range(-woah,woah):
-                    new_map[wall_x + i,wall_y + i] = 3
-
-        # find goal location
-        result_unexplored = np.where(new_map == 1)
-        coordinates_unexplored = list(zip(result_unexplored[0],result_unexplored[1]))
-        # temp = np.empty(len(coordinates_unexplored), dtype=object)
-        # temp[:] = coordinates_unexplored
-        # print(temp)
-        # def check_if_neighbour_explored(a,b):
-        def check_if_neighbour_explored(place):
-            a = place[0]
-            b = place[1]
-            for i in [-1,0,1]:
-                for j in [-1,0,1]:
-                    # print(i,j)
-                    with suppress(IndexError):
-                        # print("checking new_map[%i %i]" % (a+i,b+j))
-                        if new_map[a+i,b+j] == 2:
-                            return True 
-            return False
-
-        correct_coordinates = []
-
-        for coord in coordinates_unexplored:
-            if check_if_neighbour_explored(coord) == True:
-                correct_coordinates.append(coord)
-
-        def check_if_neighbour_wall(place):
-            a = place[0]
-            b = place[1]
-            for i in range(-2,2):
-                for j in range(-2,2):
-                    with suppress(IndexError):
-                        if new_map[a+i,b+j] == 3:
-                            return True
-            return False
-
-        correcter_coordinates = []
-        for coord in correct_coordinates:
-            if check_if_neighbour_wall(coord) == False:
-                correcter_coordinates.append(coord)
-        
-        correct_coordinates = correct_coordinates
-
-        print(correct_coordinates)
-
-        def get_distance(place):
-            return (place[0]-start_x)**2 + (place[1]-start_y)**2
-
-        distances_between = list(map(get_distance,correct_coordinates))
-        # print(distances_between)
-        min_dist = np.amin(distances_between)
-        goals = np.where(distances_between == min_dist)
-        # print(goals)
-        goal_index = goals[0][0]
-
-        goal_x, goal_y = correct_coordinates[goal_index]
-        self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
-        
-        woahhey = 6
-        for goal_x,goal_y in [coord for coord in coordinates_wall]:
-            for i in range(-woahhey,woahhey):
-                for j in range(-woahhey,woahhey):
-                    new_map[wall_x + i,wall_y + i] = 3
-
         # create image from 2D array using PIL
-        rotated = Image.fromarray(new_map)
+        # rotated = Image.fromarray(rotated)
         # show the image using grayscale map
         #plt.imshow(img, cmap='gray', origin='lower')
         #plt.imshow(img_transformed, cmap='gray', origin='lower')
@@ -334,8 +320,6 @@ class AutoNav(Node):
         plt.draw_all()
         # pause to make sure the plot gets created
         plt.pause(0.00000000001)
-
-        
 
     def scan_callback(self, msg):
         # self.get_logger().info('In scan_callback')
@@ -400,49 +384,6 @@ class AutoNav(Node):
         twist.angular.z = 0.0
         # stop the rotation
         self.publisher_.publish(twist)
-    '''
-    # find closest unexplored point (input: occupancy grid, current location, output: end location)
-    def whereami(self,msg):
-        # find transform to obtain base_link coordinates in the map frame
-        # lookup_transform(target_frame, source_frame, time)
-        try:
-            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
-        except (LookupException, ConnectivityException, ExtrapolationException) as e:
-            self.get_logger().info('No transformation found')
-            return
-
-        cur_pos = trans.transform.translation
-        cur_rot = trans.transform.rotation
-        # self.get_logger().info('Trans: %f, %f' % (cur_pos.x, cur_pos.y))
-        # convert quaternion to Euler angles
-        roll, pitch, yaw = euler_from_quaternion(cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
-        # self.get_logger().info('Rot-Yaw: R: %f D: %f' % (yaw, np.degrees(yaw)))
-
-        # get map resolution
-        map_res = msg.info.resolution
-        # get map origin struct has fields of x, y, and z
-        map_origin = msg.info.origin.position
-        # get map grid positions for x, y position
-        grid_x = round((cur_pos.x - map_origin.x) / map_res)
-        grid_y = round(((cur_pos.y - map_origin.y) / map_res))
-        # self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
-
-        return [grid_x,grid_y]
-
-    def wheretogo(self,[start_x,start_y]):
-        navdata = self.occdata
-
-
-
-
-
-    # find way (fastest?) from start point to end point (input: start,end,occupancy grid output: path instructions)
-    def findpath(self,[start_x,start_y],[end_x,end_y]):
-
-
-
-    # translate way into instructions for turtlebot (
-    '''
 
     def pick_direction(self):
         # self.get_logger().info('In pick_direction')
@@ -522,8 +463,8 @@ def main(args=None):
     auto_nav.mover()
 
     # create matplotlib figure
-    # plt.ion()
-    # plt.show()
+    plt.ion()
+    plt.show()
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
