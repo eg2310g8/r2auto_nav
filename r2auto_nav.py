@@ -19,8 +19,9 @@ from geometry_msgs.msg import Twist
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
-from astar_python.astar import Astar
+from .astar import Astar
 import numpy as np
+import matplotlib.pyplot as plt
 import math
 import cmath
 import time
@@ -28,6 +29,7 @@ import tf2_ros
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 import scipy.stats
 from PIL import Image
+from contextlib import suppress
 
 # constants
 rotatechange = 1
@@ -238,23 +240,116 @@ class AutoNav(Node):
         rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
         
         # convert rotated image to array
-        new_map = np.asarray(rotated)
+        new_map = np.copy(np.asarray(rotated))
 
         # find the point where array = 0, that is the start location
-        result = new_map.where(arr == 0)
-
-        coordinates = list(zip(result[0], result[1]))
-        start_x, start_y = coordinates[0]
-        # self.get_logger().info('Start_X: %i Start_Y: %i' % (start_x, start_y))
+        result_start = np.where(new_map == 0)
+        # print('coordinates')
+        coordinates_start = list(zip(result_start[0], result_start[1]))
+        # print('startxandy')
+        start_x, start_y = coordinates_start[0]
+        self.get_logger().info('Start_X: %i Start_Y: %i' % (start_x, start_y))
         
-
-
-
         # for all the occupied points(=2), make the 3 closest cells black also
+        # result_walls = np.where(new_map == 3)
+        # coordinates_walls = list(zip(result_walls[0], result_walls[1]))
+        result_wall = np.where(new_map == 3)
+        coordinates_wall = list(zip(result_wall[0],result_wall[1]))
+
+        woah = 1
+        for wall_x,wall_y in [coord for coord in coordinates_wall]:
+            for i in range(-woah,woah):
+                for j in range(-woah,woah):
+                    new_map[wall_x + i,wall_y + i] = 3
 
         # find goal location
+        result_unexplored = np.where(new_map == 1)
+        coordinates_unexplored = list(zip(result_unexplored[0],result_unexplored[1]))
+        # temp = np.empty(len(coordinates_unexplored), dtype=object)
+        # temp[:] = coordinates_unexplored
+        # print(temp)
+        # def check_if_neighbour_explored(a,b):
+        def check_if_neighbour_explored(place):
+            a = place[0]
+            b = place[1]
+            for i in [-1,0,1]:
+                for j in [-1,0,1]:
+                    # print(i,j)
+                    with suppress(IndexError):
+                        # print("checking new_map[%i %i]" % (a+i,b+j))
+                        if new_map[a+i,b+j] == 2:
+                            return True 
+            return False
+
+        correct_coordinates = []
+
+        for coord in coordinates_unexplored:
+            if check_if_neighbour_explored(coord) == True:
+                correct_coordinates.append(coord)
+
+        print(correct_coordinates)
+
+        def get_distance(place):
+            return (place[0]-start_x)**2 + (place[1]-start_y)**2
+
+        distances_between = list(map(get_distance,correct_coordinates))
+        # print(distances_between)
+        min_dist = np.amin(distances_between)
+        goals = np.where(distances_between == min_dist)
+        # print(goals)
+        goal_index = goals[0][0]
+
+        goal_x, goal_y = correct_coordinates[goal_index]
+        self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
+        
+        woahhey = 6
+        for goal_x,goal_y in [coord for coord in coordinates_wall]:
+            for i in range(-woahhey,woahhey):
+                for j in range(-woahhey,woahhey):
+                    new_map[wall_x + i,wall_y + i] = 3
+
+        # create image from 2D array using PIL
+        rotated = Image.fromarray(new_map)
+        # show the image using grayscale map
+        #plt.imshow(img, cmap='gray', origin='lower')
+        #plt.imshow(img_transformed, cmap='gray', origin='lower')
+        plt.imshow(rotated, cmap='gray', origin='lower')
+        plt.draw_all()
+        # pause to make sure the plot gets created
+        plt.pause(0.00000000001)
+
+        '''
+        def unit_vector(vector):
+            """ Returns the unit vector of the vector.  """
+            return vector / np.linalg.norm(vector)
+
+        def angle_between(v1, v2):
+            v1_u = unit_vector(v1)
+            v2_u = unit_vector(v2)
+            return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
+        new_angle = angle_between((start_x,start_y),(goal_x,goal_y))
+        self.get_logger().info('Angle: %i' % (new_angle))
+
+        '''
+
         # this will not work!! need to start from around the turtlebot and spin
         '''
+
+        # check which unexplored points are next to an explored point
+        # print(coordinates_unexplored)
+        # vneighbours = np.vectorize(check_if_neighbour_explored)
+        # correct_coordinate_index = vneighbours(coordinates_unexplored)
+        # correct_coordinate_index = np.asarray(map(check_if_neighbour_explored,coordinates_unexplored))
+        # print(correct_coordinate_index)
+
+        #for x,y in np.nditer(coordinates_unexplored):
+        #    print(x,y, end='\n')
+        
+        #correct_coordinate_mid = np.where(coordinates_unexplored ==)
+        #print(correct_coordinate_mid)
+        #correct_coordinate = list(zip(correct_coordinate_mid[0],correct_coordinate_mid[1]))
+        #print(correct_coordinate)
         goal_x = 0
         goal_y = 0
         for i in range(0,msg.info.width):
