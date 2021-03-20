@@ -169,8 +169,9 @@ class AutoNav(Node):
         roll, pitch, yaw = euler_from_quaternion(cur_rot.x,cur_rot.y, cur_rot.z, cur_rot.w)
         # self.get_logger().info('Rot-Yaw: R: %f D: %f' % (yaw, np.degrees(yaw)))
         
-        # get map resolution
+        # get map resolution (0.05m/cell)
         map_res = msg.info.resolution
+        #self.get_logger().info('Resolution: %f' % (map_res))
         # get map origin struct has field of x,y, and z
         map_origin = msg.info.origin.position
         
@@ -229,8 +230,8 @@ class AutoNav(Node):
         def check_if_neighbour_wall(place):
             a = place[0]
             b = place[1]
-            for i in range(-2,2):
-                for j in range(-2,2):
+            for i in range(-1,1):
+                for j in range(-1,1):
                     with suppress(IndexError):
                         if odata[a+i,b+j] == 3:
                             return True
@@ -259,18 +260,18 @@ class AutoNav(Node):
         # self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
         
 
-        self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
-        self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
-        getListOfPath(odata,(grid_x,grid_y),(goal_x,goal_y))
-
         # set current robot location to 0
         odata[grid_y][grid_x] = 0
         
-        # set goal location to 0
+        # set goal location to 4
+        odata[goal_x][goal_y] = 4
+        '''
         woahhey = 3
         for i in range(-woahhey,woahhey):
             for j in range(-woahhey,woahhey):
-                odata[goal_x + i,goal_y + j] = 0
+                odata[goal_y + i,goal_x + j] = 4
+                # odata[goal_x + i,goal_y + j] = 4
+        '''
         # print("Goal edits done")
         # create image from 2D array using PIL
         img = Image.fromarray(odata)
@@ -309,8 +310,58 @@ class AutoNav(Node):
         img_transformed = Image.new(img.mode, (new_width, new_height), map_bg_color)
         img_transformed.paste(img, (left, top))
         
+        
         # rotate by 90 degrees so that the forward direction is at the top of the image
         rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
+        rotated_array = np.copy(np.asarray(rotated))
+        start = np.where(rotated_array == 0)
+        start = list(zip(start[0],start[1]))
+        start = start[0]
+        print(start)
+
+        end = np.where(rotated_array == 4)
+        end = list(zip(end[0],end[1]))
+        end = end[0]
+        print(end)
+
+        # notify start and end locations
+        self.get_logger().info('Start Y: %i Start X: %i' % (start[1], start[0]))
+        self.get_logger().info('Goal Y: %i Goal X: %i' % (end[1], end[0]))
+        
+        # find out how to get to chosen location
+        where_to_go = getListOfPath(rotated_array,start,end)
+        where_to_go.pop(0)
+        next_closest = where_to_go.pop(0)
+        
+        # function to norm vectors
+        def unit_vector(vector):
+            """ Returns the unit vector of the vector.  """
+            return vector / np.linalg.norm(vector)
+
+        # function to find angle btw two vectors
+        def angle_between(v1, v2):
+            """ Returns the angle in radians between vectors 'v1' and 'v2'::
+
+                    >>> angle_between((1, 0, 0), (0, 1, 0))
+                    1.5707963267948966
+                    >>> angle_between((1, 0, 0), (1, 0, 0))
+                    0.0
+                    >>> angle_between((1, 0, 0), (-1, 0, 0))
+                    3.141592653589793
+            """
+            v1_u = unit_vector(v1)
+            v2_u = unit_vector(v2)
+            return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+        
+        # find angle between direction vector and current direction
+        direction_vector = (end[0]-start[0],end[1]-start[1])
+        angle_i_want = angle_between((0,1),direction_vector)
+        angle_i_want = np.degrees(angle_i_want)
+
+        # print out next closest location & desired angle
+        print(next_closest)
+        print(angle_i_want)
+        
         # create image from 2D array using PIL
         # rotated = Image.fromarray(rotated)
         # show the image using grayscale map
@@ -386,18 +437,11 @@ class AutoNav(Node):
         self.publisher_.publish(twist)
 
     def pick_direction(self):
-        # self.get_logger().info('In pick_direction')
-        if self.laser_range.size != 0:
-            # use nanargmax as there are nan's in laser_range added to replace 0's
-            lr2i = np.nanargmax(self.laser_range)
-            self.get_logger().info('Picked direction: %d %f m' %
-                                   (lr2i, self.laser_range[lr2i]))
-        else:
-            lr2i = 0
-            self.get_logger().info('No data!')
-
+        
+        '''
         # rotate to that direction
         self.rotatebot(float(lr2i))
+        '''
 
         # start moving
         self.get_logger().info('Start moving')
