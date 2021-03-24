@@ -26,7 +26,6 @@ import math
 import cmath
 import time
 import tf2_ros
-import cv2
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 import scipy.stats
 from PIL import Image
@@ -42,12 +41,6 @@ front_angles = range(-front_angle, front_angle+1, 1)
 scanfile = 'lidar.txt'
 mapfile = 'mapnew.txt'
 map_bg_color = 1
-occdata = np.array([])
-margin_of_error = 5
-current_position = ()
-end_position = ()
-list_of_paths = []
-last_angle_turn = 0
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
@@ -95,6 +88,7 @@ def getListOfPath(currMap, start, end):
 
     astar = Astar(mat)
     result = astar.run(start, end)
+    print(result)
     return result
 
 
@@ -127,6 +121,7 @@ class AutoNav(Node):
             self.occ_callback,
             qos_profile_sensor_data)
         self.occ_subscription  # prevent unused variable warning
+        self.occdata = np.array([])
         self.tfBuffer = tf2_ros.Buffer()
         self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
 
@@ -146,8 +141,6 @@ class AutoNav(Node):
             orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
 
     def occ_callback(self, msg):
-        global occdata, current_position, list_of_paths, end_position
-
         self.get_logger().info('In occ_callback')
         # create numpy array
         msgdata = np.array(msg.data)
@@ -192,20 +185,20 @@ class AutoNav(Node):
         # get map grid positions for x,y position
         grid_x = round((cur_pos.x - map_origin.x) / map_res)
         grid_y = round((cur_pos.y - map_origin.y) / map_res)
-        self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
+        # self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
 
         # binnum go from 1 to 3 so we can use uint8
         # convert into 2D array using column order
         odata = np.uint8(binnum.reshape(msg.info.height, msg.info.width))
-        occdata = odata
 
-        # for all the occupied points(=3), make the closest 1 cell(s) black also
+        # for all the occupied points(=3), make the closest woah=1 cell(s) black also
         result_wall = np.where(odata == 3)
         coordinates_wall = list(zip(result_wall[0], result_wall[1]))
 
+        woah = 1
         for wall_x, wall_y in [coord for coord in coordinates_wall]:
-            for i in range(-1, 1):
-                for j in range(-1, 1):
+            for i in range(-woah, woah):
+                for j in range(-woah, woah):
                     with suppress(IndexError):
                         odata[wall_x + i, wall_y + j] = 3
 
@@ -254,7 +247,7 @@ class AutoNav(Node):
 
         correct_coordinates = correcter_coordinates
 
-        # print(correcter_coordinates)
+        # print(correct_coordinates)
 
         def get_distance(place):
             return (place[0]-grid_x)**2 + (place[1]-grid_y)**2
@@ -267,14 +260,20 @@ class AutoNav(Node):
         goal_index = goals[0][0]
         # print(goal_index)
         goal_x, goal_y = correct_coordinates[goal_index]
-        self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
+        # self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
 
         # set current robot location to 0
         odata[grid_y][grid_x] = 0
 
         # set goal location to 4
         odata[goal_x][goal_y] = 4
-
+        '''
+        woahhey = 3
+        for i in range(-woahhey,woahhey):
+            for j in range(-woahhey,woahhey):
+                odata[goal_y + i,goal_x + j] = 4
+                # odata[goal_x + i,goal_y + j] = 4
+        '''
         # print("Goal edits done")
         # create image from 2D array using PIL
         img = Image.fromarray(odata)
@@ -319,17 +318,13 @@ class AutoNav(Node):
             yaw)-90, expand=True, fillcolor=map_bg_color)
         rotated_array = np.copy(np.asarray(rotated))
         start = np.where(rotated_array == 0)
-
-        # apparently this might cause problem...
         start = list(zip(start[0], start[1]))
         start = start[0]
-        current_position = start
         print(start)
 
         end = np.where(rotated_array == 4)
         end = list(zip(end[0], end[1]))
         end = end[0]
-        end_position = end
         print(end)
 
         # notify start and end locations
@@ -340,8 +335,36 @@ class AutoNav(Node):
         # find out how to get to chosen location
         where_to_go = getListOfPath(rotated_array, start, end)
         where_to_go.pop(0)
-        if len(list_of_paths) > len(where_to_go) or len(list_of_paths) == 0:
-            list_of_paths = where_to_go
+        next_closest = where_to_go.pop(0)
+
+        # function to norm vectors
+        def unit_vector(vector):
+            """ Returns the unit vector of the vector.  """
+            return vector / np.linalg.norm(vector)
+
+        # function to find angle btw two vectors
+        def angle_between(v1, v2):
+            """ Returns the angle in radians between vectors 'v1' and 'v2'::
+
+                    >>> angle_between((1, 0, 0), (0, 1, 0))
+                    1.5707963267948966
+                    >>> angle_between((1, 0, 0), (1, 0, 0))
+                    0.0
+                    >>> angle_between((1, 0, 0), (-1, 0, 0))
+                    3.141592653589793
+            """
+            v1_u = unit_vector(v1)
+            v2_u = unit_vector(v2)
+            return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
+        # find angle between direction vector and current direction
+        direction_vector = (end[0]-start[0], end[1]-start[1])
+        angle_i_want = angle_between((0, 1), direction_vector)
+        angle_i_want = np.degrees(angle_i_want)
+
+        # print out next closest location & desired angle
+        print(next_closest)
+        print(angle_i_want)
 
         # create image from 2D array using PIL
         # rotated = Image.fromarray(rotated)
@@ -418,8 +441,11 @@ class AutoNav(Node):
         self.publisher_.publish(twist)
 
     def pick_direction(self):
+        '''
+        # rotate to that direction
+        self.rotatebot(float(lr2i))
+        '''
 
-        # self.rotatebot(angle_needed)
         # start moving
         self.get_logger().info('Start moving')
         twist = Twist()
@@ -427,60 +453,6 @@ class AutoNav(Node):
         twist.angular.z = 0.0
         # not sure if this is really necessary, but things seem to work more
         # reliably with this
-        time.sleep(1)
-        self.publisher_.publish(twist)
-
-    def my_move(self):
-        global list_of_paths, last_angle_turn
-
-        next_closest = list_of_paths.pop(0)
-
-        # function to norm vectors
-        def unit_vector(vector):
-            """ Returns the unit vector of the vector.  """
-            return vector / np.linalg.norm(vector)
-
-        # function to find angle btw two vectors
-        def angle_between(v1, v2):
-            """ Returns the angle in radians between vectors 'v1' and 'v2'::
-
-                    >>> angle_between((1, 0, 0), (0, 1, 0))
-                    1.5707963267948966
-                    >>> angle_between((1, 0, 0), (1, 0, 0))
-                    0.0
-                    >>> angle_between((1, 0, 0), (-1, 0, 0))
-                    3.141592653589793
-            """
-            v1_u = unit_vector(v1)
-            v2_u = unit_vector(v2)
-            return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
-
-        # find angle between direction vector and current direction
-        direction_vector = (
-            next_closest[0]-current_position[0], next_closest[1]-current_position[1])
-        angle_i_want = angle_between((0, 1), direction_vector)
-
-        # print out next closest location & desired angle
-        print("My current position")
-        print(current_position)
-        print("Next closest")
-        print(next_closest)
-        print("Angle I Want")
-        print(list_of_paths)
-        print(angle_i_want)
-        if (abs(angle_i_want - last_angle_turn) >= 0.12):
-            last_angle_turn = -1 * angle_i_want
-            print("Last Angle Turn")
-            print(last_angle_turn)
-            self.rotatebot(last_angle_turn)
-        else:
-            self.rotatebot(0)
-
-        self.get_logger().info('Try my_move')
-        twist = Twist()
-        twist.linear.x = speedchange
-        twist.angular.z = 0.0
-
         time.sleep(1)
         self.publisher_.publish(twist)
 
@@ -493,85 +465,17 @@ class AutoNav(Node):
         # time.sleep(1)
         self.publisher_.publish(twist)
 
-    def initialmove(self):
-        self.get_logger().info('In initialmove')
-        # publish to cmd_vel to move TurtleBot
-        twist = Twist()
-        twist.linear.x = speedchange
-        twist.angular.z = 0.0
-        time.sleep(2)
-        self.publisher_.publish(twist)
-
-    def closure(self):
-        # This function checks if mapdata contains a closed contour. The function
-        # assumes that the raw map data from SLAM has been modified so that
-        # -1 (unmapped) is now 0, and 0 (unoccupied) is now 1, and the occupied
-        # values go from 1 to 101.
-
-        # According to: https://stackoverflow.com/questions/17479606/detect-closed-contours?rq=1
-        # closed contours have larger areas than arc length, while open contours have larger
-        # arc length than area. But in my experience, open contours can have areas larger than
-        # the arc length, but closed contours tend to have areas much larger than the arc length
-        # So, we will check for contour closure by checking if any of the contours
-        # have areas that are more than 10 times larger than the arc length
-        # This value may need to be adjusted with more testing.
-        global occdata
-
-        ALTHRESH = 10
-        # We will slightly fill in the contours to make them easier to detect
-        DILATE_PIXELS = 3
-        mapdata = occdata
-        # assumes mapdata is uint8 and consists of 0 (unmapped), 1 (unoccupied),
-        # and other positive values up to 101 (occupied)
-        # so we will apply a threshold of 2 to create a binary image with the
-        # occupied pixels set to 255 and everything else is set to 0
-        # we will use OpenCV's threshold function for this
-        ret, img2 = cv2.threshold(mapdata, 2, 255, 0)
-        # we will perform some erosion and dilation to fill out the contours a
-        # little bit
-        element = cv2.getStructuringElement(
-            cv2.MORPH_CROSS, (DILATE_PIXELS, DILATE_PIXELS))
-        # img3 = cv2.erode(img2,element)
-        img4 = cv2.dilate(img2, element)
-        # use OpenCV's findContours function to identify contours
-        # OpenCV version 3 changed the number of return arguments, so we
-        # need to check the version of OpenCV installed so we know which argument
-        # to grab
-        fc = cv2.findContours(img4, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        (major, minor, _) = cv2.__version__.split(".")
-        if(major == '3'):
-            contours = fc[1]
-        else:
-            contours = fc[0]
-        # find number of contours returned
-        lc = len(contours)
-        # rospy.loginfo('# Contours: %s', str(lc))
-        # create array to compute ratio of area to arc length
-        cAL = np.zeros((lc, 2))
-        for i in range(lc):
-            cAL[i, 0] = cv2.contourArea(contours[i])
-            cAL[i, 1] = cv2.arcLength(contours[i], True)
-
-        # closed contours tend to have a much higher area to arc length ratio,
-        # so if there are no contours with high ratios, we can safely say
-        # there are no closed contours
-        cALratio = cAL[:, 0]/cAL[:, 1]
-        # rospy.loginfo('Closure: %s', str(cALratio))
-        if np.any(cALratio > ALTHRESH):
-            return True
-        else:
-            return False
-
     def mover(self):
-
         try:
             # initialize variable to write elapsed time to file
-            contourCheck = 1
+            # contourCheck = 1
 
-            # start moving straight for the first 2 seconds
-            self.initialmove()
+            # find direction with the largest distance from the Lidar,
+            # rotate to that direction, and start moving
+            self.pick_direction()
+
             while rclpy.ok():
-                if len(list_of_paths) != 0 and self.laser_range.size != 0:
+                if self.laser_range.size != 0:
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
                     lri = (self.laser_range[front_angles]
@@ -581,31 +485,11 @@ class AutoNav(Node):
                     # if the list is not empty
                     if(len(lri[0]) > 0):
                         # stop moving
-                        print("It's gonna crashhhhhh !!! I FUCKED UPP !")
                         self.stopbot()
-                        break
-                    # find direction with the largest distance from the Lidar
-                    # rotate to that direction
-                    # start moving
-                    # self.pick_direction()
-                    self.my_move()
-                    # check if SLAM map is complete
-                    if contourCheck and len(occdata) != 0:
-                        if self.closure():
-                            # map is complete, so save current time into file
-                            with open("maptime.txt", "w") as f:
-                                f.write("Elapsed Time: " +
-                                        str(time.time() - start_time))
-                            contourCheck = 0
-                            # play a sound
-                            soundhandle = SoundClient()
-                            rospy.sleep(1)
-                            soundhandle.stopAll()
-                            soundhandle.play(SoundRequest.NEEDS_UNPLUGGING)
-                            rospy.sleep(2)
-                            # save the map
-                            cv2.imwrite('mazemap.png', occdata)
-                            break
+                        # find direction with the largest distance from the Lidar
+                        # rotate to that direction
+                        # start moving
+                        self.pick_direction()
 
                 # allow the callback functions to run
                 rclpy.spin_once(self)

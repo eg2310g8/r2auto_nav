@@ -88,6 +88,7 @@ def getListOfPath(currMap, start, end):
 
     astar = Astar(mat)
     result = astar.run(start, end)
+    # debugging statement, remove once we know it works
     print(result)
     return result
 
@@ -123,8 +124,8 @@ class AutoNav(Node):
         self.occ_subscription  # prevent unused variable warning
         self.occdata = np.array([])
         self.tfBuffer = tf2_ros.Buffer()
-        self.tfListener = tf2_ros.TransformListener(self.tfBuffer,self)
-        
+        self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
+
         # create subscription to track lidar
         self.scan_subscription = self.create_subscription(
             LaserScan,
@@ -144,9 +145,9 @@ class AutoNav(Node):
         self.get_logger().info('In occ_callback')
         # create numpy array
         msgdata = np.array(msg.data)
-        # compute histogram to identify percent of bins with -1, values btw 1 and below 50
-        # btw 50 and 100.
-        occ_counts, edges, binnum = scipy.stats.binned_statistic(msgdata, np.nan, statistic='count', bins=occ_bins)
+        # compute histogram to identify percent of bins with -1, values btw 1 and below 50, and btw 50 and 100.
+        occ_counts, edges, binnum = scipy.stats.binned_statistic(
+            msgdata, np.nan, statistic='count', bins=occ_bins)
         # occ_counts = np.histogram(msgdata,occ_bins)
         # calculate total number of bins
         # total_bins = msg.info.width * msg.info.height
@@ -156,7 +157,8 @@ class AutoNav(Node):
         # find transform to obtain base_link coordinates in the map frame
         # lookup_transform(target_frame, source_frame, time)
         try:
-            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+            trans = self.tfBuffer.lookup_transform(
+                'map', 'base_link', rclpy.time.Time())
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
             self.get_logger().info('No transformation found')
             return
@@ -167,23 +169,24 @@ class AutoNav(Node):
         cur_rot = trans.transform.rotation
         # self.get_logger().info('Trans: %f, %f' % (cur_pos.x, cur_pos.y))
         # convert quaternion to Euler angles
-        roll, pitch, yaw = euler_from_quaternion(cur_rot.x,cur_rot.y, cur_rot.z, cur_rot.w)
+        roll, pitch, yaw = euler_from_quaternion(
+            cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
         # self.get_logger().info('Rot-Yaw: R: %f D: %f' % (yaw, np.degrees(yaw)))
-        
+
         # get map resolution
         map_res = msg.info.resolution
         # get map origin struct has field of x,y, and z
         map_origin = msg.info.origin.position
-        
+
         # get map width and height
         iwidth = msg.info.width
         iheight = msg.info.height
 
-         # get map grid positions for x,y position
-        grid_x = round((cur_pos.x - map_origin.x)/ map_res)
-        grid_y = round((cur_pos.y - map_origin.y)/ map_res)
+        # get map grid positions for x,y position
+        grid_x = round((cur_pos.x - map_origin.x) / map_res)
+        grid_y = round((cur_pos.y - map_origin.y) / map_res)
         self.get_logger().info('Grid Y: %i Grid X: %i' % (grid_y, grid_x))
-        
+
         '''
         # get goal location !
         goal_x = 0
@@ -197,7 +200,7 @@ class AutoNav(Node):
 
         # binnum go from 1 to 3 so we can use uint8
         # convert into 2D array using column order
-        odata = np.uint8(binnum.reshape(msg.info.height,msg.info.width))
+        odata = np.uint8(binnum.reshape(msg.info.height, msg.info.width))
         # set current robot location to 0
         odata[grid_y][grid_x] = 0
         # create image from 2D array using PIL
@@ -211,7 +214,7 @@ class AutoNav(Node):
         # self.get_logger().info('Shift Y: %i Shift X: %i' % (shift_y, shift_x))
 
         # pad image to move robot position to the center
-        # adapted from https://note.nkmk.me/en/python-pillow-add-margin-expand-canvas/ 
+        # adapted from https://note.nkmk.me/en/python-pillow-add-margin-expand-canvas/
         left = 0
         right = 0
         top = 0
@@ -233,12 +236,14 @@ class AutoNav(Node):
         # create new image
         new_width = iwidth + right + left
         new_height = iheight + top + bottom
-        img_transformed = Image.new(img.mode, (new_width, new_height), map_bg_color)
+        img_transformed = Image.new(
+            img.mode, (new_width, new_height), map_bg_color)
         img_transformed.paste(img, (left, top))
 
         # rotate by 90 degrees so that the forward direction is at the top of the image
-        rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
-        
+        rotated = img_transformed.rotate(np.degrees(
+            yaw)-90, expand=True, fillcolor=map_bg_color)
+
         # convert rotated image to array
         new_map = np.copy(np.asarray(rotated))
 
@@ -249,36 +254,37 @@ class AutoNav(Node):
         # print('startxandy')
         start_x, start_y = coordinates_start[0]
         self.get_logger().info('Start_X: %i Start_Y: %i' % (start_x, start_y))
-        
+
         # for all the occupied points(=2), make the 3 closest cells black also
         # result_walls = np.where(new_map == 3)
         # coordinates_walls = list(zip(result_walls[0], result_walls[1]))
         result_wall = np.where(new_map == 3)
-        coordinates_wall = list(zip(result_wall[0],result_wall[1]))
+        coordinates_wall = list(zip(result_wall[0], result_wall[1]))
 
-        woah = 1
-        for wall_x,wall_y in [coord for coord in coordinates_wall]:
-            for i in range(-woah,woah):
-                for j in range(-woah,woah):
-                    new_map[wall_x + i,wall_y + i] = 3
+        for wall_x, wall_y in [coord for coord in coordinates_wall]:
+            for i in range(-1, 1):
+                for j in range(-1, 1):
+                    new_map[wall_x + i, wall_y + i] = 3
 
         # find goal location
         result_unexplored = np.where(new_map == 1)
-        coordinates_unexplored = list(zip(result_unexplored[0],result_unexplored[1]))
+        coordinates_unexplored = list(
+            zip(result_unexplored[0], result_unexplored[1]))
         # temp = np.empty(len(coordinates_unexplored), dtype=object)
         # temp[:] = coordinates_unexplored
         # print(temp)
         # def check_if_neighbour_explored(a,b):
+
         def check_if_neighbour_explored(place):
             a = place[0]
             b = place[1]
-            for i in [-1,0,1]:
-                for j in [-1,0,1]:
+            for i in [-1, 0, 1]:
+                for j in [-1, 0, 1]:
                     # print(i,j)
                     with suppress(IndexError):
                         # print("checking new_map[%i %i]" % (a+i,b+j))
-                        if new_map[a+i,b+j] == 2:
-                            return True 
+                        if new_map[a+i, b+j] == 2:
+                            return True
             return False
 
         correct_coordinates = []
@@ -290,10 +296,10 @@ class AutoNav(Node):
         def check_if_neighbour_wall(place):
             a = place[0]
             b = place[1]
-            for i in range(-2,2):
-                for j in range(-2,2):
+            for i in range(-2, 2):
+                for j in range(-2, 2):
                     with suppress(IndexError):
-                        if new_map[a+i,b+j] == 3:
+                        if new_map[a+i, b+j] == 3:
                             return True
             return False
 
@@ -301,7 +307,7 @@ class AutoNav(Node):
         for coord in correct_coordinates:
             if check_if_neighbour_wall(coord) == False:
                 correcter_coordinates.append(coord)
-        
+
         correct_coordinates = correct_coordinates
 
         print(correct_coordinates)
@@ -309,7 +315,7 @@ class AutoNav(Node):
         def get_distance(place):
             return (place[0]-start_x)**2 + (place[1]-start_y)**2
 
-        distances_between = list(map(get_distance,correct_coordinates))
+        distances_between = list(map(get_distance, correct_coordinates))
         # print(distances_between)
         min_dist = np.amin(distances_between)
         goals = np.where(distances_between == min_dist)
@@ -318,12 +324,11 @@ class AutoNav(Node):
 
         goal_x, goal_y = correct_coordinates[goal_index]
         self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
-        
-        woahhey = 6
-        for goal_x,goal_y in [coord for coord in coordinates_wall]:
-            for i in range(-woahhey,woahhey):
-                for j in range(-woahhey,woahhey):
-                    new_map[wall_x + i,wall_y + i] = 3
+
+        for goal_x, goal_y in [coord for coord in coordinates_wall]:
+            for i in range(-6, 6):
+                for j in range(-6, 6):
+                    new_map[wall_x + i, wall_y + i] = 3
 
         # create image from 2D array using PIL
         rotated = Image.fromarray(new_map)
@@ -334,8 +339,6 @@ class AutoNav(Node):
         plt.draw_all()
         # pause to make sure the plot gets created
         plt.pause(0.00000000001)
-
-        
 
     def scan_callback(self, msg):
         # self.get_logger().info('In scan_callback')
