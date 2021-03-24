@@ -3,3 +3,4 @@ map.txt
 .vscode
 .pycache
 __pycache__/
+*.pyc
