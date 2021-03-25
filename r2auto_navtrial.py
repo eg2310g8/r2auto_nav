@@ -87,7 +87,7 @@ def getListOfPath(currMap, start, end):
             elif j == 2:
                 # this means this is explored & unoccupied
                 innerMat.append(0)
-            else:
+            elif j == 3:
                 # this means this is an obstacle
                 innerMat.append(None)
         mat.append(innerMat)

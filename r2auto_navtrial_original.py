@@ -33,7 +33,7 @@ from contextlib import suppress
 
 # constants
 rotatechange = 1
-speedchange = 0.22
+speedchange = 0.10
 occ_bins = [-1, 0, 50, 100]
 stop_distance = 0.25
 front_angle = 30
@@ -74,13 +74,13 @@ def getListOfPath(currMap, start, end):
 
     for i in currMap:
         for j in i:
-            if j == 1:
+            if j == 1 or j ==4:
                 # this means that this is unexplored
                 innerMat.append(0)
-            elif j == 2:
+            elif j == 2 or j == 5:
                 # this means this is explored & unoccupied
                 innerMat.append(0)
-            else:
+            elif j == 3:
                 # this means this is an obstacle
                 innerMat.append(None)
         mat.append(innerMat)
@@ -143,6 +143,7 @@ class AutoNav(Node):
     def occ_callback(self, msg):
         self.get_logger().info('In occ_callback')
         # create numpy array
+        print("Doing Set Up")
         msgdata = np.array(msg.data)
         # compute histogram to identify percent of bins with -1, values btw 1 and below 50
         # btw 50 and `100.
@@ -182,6 +183,7 @@ class AutoNav(Node):
         iwidth = msg.info.width
         iheight = msg.info.height
 
+        print("Find Start Location on Original Map")
         # get map grid positions for x,y position
         grid_x = round((cur_pos.x - map_origin.x) / map_res)
         grid_y = round((cur_pos.y - map_origin.y) / map_res)
@@ -191,10 +193,12 @@ class AutoNav(Node):
         # convert into 2D array using column order
         odata = np.uint8(binnum.reshape(msg.info.height, msg.info.width))
 
+        print("Finding the Wall Locations on Original Map")
         # for all the occupied points(=3), make the closest woah=1 cell(s) black also
         result_wall = np.where(odata == 3)
         coordinates_wall = list(zip(result_wall[0], result_wall[1]))
 
+        print("Making the Walls Larger on Original Map")
         woah = 1
         for wall_x, wall_y in [coord for coord in coordinates_wall]:
             for i in range(-woah, woah):
@@ -202,14 +206,16 @@ class AutoNav(Node):
                     with suppress(IndexError):
                         odata[wall_x + i, wall_y + j] = 3
 
+        print("Finding the Goal Location")
+        print("Finding All Explored Points")
         # find goal location
-        result_unexplored = np.where(odata == 1)
+        result_unexplored = np.where(odata == 2)
         coordinates_unexplored = list(
             zip(result_unexplored[0], result_unexplored[1]))
         # print(coordinates_unexplored)
 
-        # def check_if_neighbour_explored(a,b):
-        def check_if_neighbour_explored(place):
+        # def check_if_neighbour_unexplored(a,b):
+        def check_if_neighbour_unexplored(place):
             a = place[0]
             b = place[1]
             for i in [-1, 0, 1]:
@@ -217,14 +223,15 @@ class AutoNav(Node):
                     # print(i,j)
                     with suppress(IndexError):
                         # print("checking new_map[%i %i]" % (a+i,b+j))
-                        if odata[a+i, b+j] == 2:
+                        if odata[a+i, b+j] == 1:
                             return True
             return False
 
         correct_coordinates = []
-
+        
+        print("Checking if Unexplored Points are next to Explored Points")
         for coord in coordinates_unexplored:
-            if check_if_neighbour_explored(coord) == True:
+            if check_if_neighbour_unexplored(coord) == True:
                 correct_coordinates.append(coord)
 
         #print("checking if neighbours explored")
@@ -241,6 +248,8 @@ class AutoNav(Node):
             return False
 
         correcter_coordinates = []
+
+        print("Checking if Explored-Unexplored Points are next to Walls")
         for coord in correct_coordinates:
             if check_if_neighbour_wall(coord) == False:
                 correcter_coordinates.append(coord)
@@ -252,19 +261,26 @@ class AutoNav(Node):
         def get_distance(place):
             return (place[0]-grid_x)**2 + (place[1]-grid_y)**2
 
+        print("Find distances between start point and goal coordinates")
         distances_between = list(map(get_distance, correct_coordinates))
         # print(distances_between)
+        print("Finding Min distance between start point and goal points")
         min_dist = np.amin(distances_between)
+        print("Find the index of the goal coordinate with min dist")
         goals = np.where(distances_between == min_dist)
         # print(goals)
         goal_index = goals[0][0]
         # print(goal_index)
+        print("Get the correct goal coordinate")
         goal_x, goal_y = correct_coordinates[goal_index]
         # self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
 
+        print("set start location to 0 on original map")
         # set current robot location to 0
+        print(grid_y,grid_x)
         odata[grid_y][grid_x] = 0
 
+        print("set goal location to 4 on original map")
         # set goal location to 4
         odata[goal_x][goal_y] = 4
         '''
@@ -274,6 +290,8 @@ class AutoNav(Node):
                 odata[goal_y + i,goal_x + j] = 4
                 # odata[goal_x + i,goal_y + j] = 4
         '''
+
+        print("transfer original array to image with shifting")
         # print("Goal edits done")
         # create image from 2D array using PIL
         img = Image.fromarray(odata)
@@ -313,15 +331,18 @@ class AutoNav(Node):
             img.mode, (new_width, new_height), map_bg_color)
         img_transformed.paste(img, (left, top))
 
+        print("Rotate the array as necessary")
         # rotate by 90 degrees so that the forward direction is at the top of the image
-        rotated = img_transformed.rotate(np.degrees(
-            yaw)-90, expand=True, fillcolor=map_bg_color)
+        rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
         rotated_array = np.copy(np.asarray(rotated))
+        
+        print("Find where start is on new map")
         start = np.where(rotated_array == 0)
         start = list(zip(start[0], start[1]))
         start = start[0]
         print(start)
 
+        print("Find where end is on new map")
         end = np.where(rotated_array == 4)
         end = list(zip(end[0], end[1]))
         end = end[0]
@@ -331,12 +352,7 @@ class AutoNav(Node):
         self.get_logger().info('Start Y: %i Start X: %i' %
                                (start[1], start[0]))
         self.get_logger().info('Goal Y: %i Goal X: %i' % (end[1], end[0]))
-
-        # find out how to get to chosen location
-        where_to_go = getListOfPath(rotated_array, start, end)
-        where_to_go.pop(0)
-        next_closest = where_to_go.pop(0)
-
+        
         # function to norm vectors
         def unit_vector(vector):
             """ Returns the unit vector of the vector.  """
@@ -356,15 +372,27 @@ class AutoNav(Node):
             v1_u = unit_vector(v1)
             v2_u = unit_vector(v2)
             return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+        
+        print("Run astar code on start, end, and rotated_array")
+        # find out how to get to chosen location
+        where_to_go = getListOfPath(rotated_array, start, end)
+        print("check if there is any instruction on where to go")
+        if type(where_to_go) != None:
+            print("pop whatever it gives")
+            where_to_go.pop(0)
+            print("pop the next_closest location")
+            next_closest = where_to_go.pop(0)
 
-        # find angle between direction vector and current direction
-        direction_vector = (end[0]-start[0], end[1]-start[1])
-        angle_i_want = angle_between((0, 1), direction_vector)
-        angle_i_want = np.degrees(angle_i_want)
+            print("find direction to go in")
+            # find angle between direction vector and current direction
+            direction_vector = (end[0]-start[0], end[1]-start[1])
+            angle_i_want = angle_between((0, 1), direction_vector)
+            angle_i_want = np.degrees(angle_i_want)
 
-        # print out next closest location & desired angle
-        print(next_closest)
-        print(angle_i_want)
+            print("print out next_closest and angle_i_want")
+            # print out next closest location & desired angle
+            print(next_closest)
+            print(angle_i_want)
 
         # create image from 2D array using PIL
         # rotated = Image.fromarray(rotated)
@@ -381,7 +409,7 @@ class AutoNav(Node):
         # create numpy array
         self.laser_range = np.array(msg.ranges)
         # print to file
-        np.savetxt(scanfile, self.laser_range)
+        # np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
         self.laser_range[self.laser_range == 0] = np.nan
 
@@ -481,7 +509,8 @@ class AutoNav(Node):
                     lri = (self.laser_range[front_angles]
                            < float(stop_distance)).nonzero()
                     # self.get_logger().info('Distances: %s' % str(lri))
-
+                    print("This is lri:")
+                    print(lri)
                     # if the list is not empty
                     if(len(lri[0]) > 0):
                         # stop moving

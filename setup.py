@@ -28,6 +28,7 @@ setup(
             'r2auto_nav = auto_nav.r2auto_nav:main',
             'r2homework = auto_nav.r2homework:main',
             'r2auto_navtrial = auto_nav.r2auto_navtrial:main',
+            'orgybaby = auto_nav.r2auto_navtrial_original:main',
         ],
     },
 )
