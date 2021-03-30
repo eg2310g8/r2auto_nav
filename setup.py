@@ -29,6 +29,8 @@ setup(
             'r2homework = auto_nav.r2homework:main',
             'r2auto_navtrial = auto_nav.r2auto_navtrial:main',
             'orgybaby = auto_nav.r2auto_navtrial_original:main',
+            'mapping = auto_nav.r2_getmapinfo:main',
+            'navi = auto_nav.r2_dothenavigation:main',
         ],
     },
 )

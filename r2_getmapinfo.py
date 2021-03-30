@@ -19,6 +19,7 @@ from geometry_msgs.msg import Twist
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
+from std_msgs.msg import String
 from .astar import Astar
 import numpy as np
 import matplotlib.pyplot as plt
@@ -32,14 +33,7 @@ from PIL import Image
 from contextlib import suppress
 
 # constants
-rotatechange = 0.5
-speedchange = 0.1
-occ_bins = [-1, 0, 55, 100]
-stop_distance = 0.25
-front_angle = 30
-front_angles = range(-front_angle, front_angle+1, 1)
-scanfile = 'lidar.txt'
-mapfile = 'mapnew.txt'
+occ_bins = [-1, 0, 50, 100]
 map_bg_color = 1
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
@@ -67,7 +61,6 @@ def euler_from_quaternion(x, y, z, w):
 
     return roll_x, pitch_y, yaw_z  # in radians
 
-
 def getListOfPath(currMap, start, end):
     mat = []
     innerMat = []
@@ -88,17 +81,17 @@ def getListOfPath(currMap, start, end):
 
     astar = Astar(mat)
     result = astar.run(start, end)
-    print(result)
+    # print(result)
     return result
 
 
-class AutoNav(Node):
+class Mapping(Node):
 
     def __init__(self):
-        super().__init__('auto_nav')
+        super().__init__('mapping')
 
         # create publisher for moving TurtleBot
-        self.publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.publisher_ = self.create_publisher(String, 'rotated_array', qos_profile_sensor_data)
         # self.get_logger().info('Created publisher')
 
         # create subscription to track orientation
@@ -129,15 +122,6 @@ class AutoNav(Node):
         self.angle_i_want = 5
         self.tfBuffer = tf2_ros.Buffer()
         self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
-
-        # create subscription to track lidar
-        self.scan_subscription = self.create_subscription(
-            LaserScan,
-            'scan',
-            self.scan_callback,
-            qos_profile_sensor_data)
-        self.scan_subscription  # prevent unused variable warning
-        self.laser_range = np.array([])
 
     def odom_callback(self, msg):
         # self.get_logger().info('In odom_callback')
@@ -199,11 +183,6 @@ class AutoNav(Node):
         # convert into 2D array using column order
         odata = np.uint8(binnum.reshape(msg.info.height, msg.info.width))
 
-        print("Finding the Wall Locations on Original Map")
-        # for all the occupied points(=3), make the closest woah=1 cell(s) black also
-        result_wall = np.where(odata == 3)
-        coordinates_wall = list(zip(result_wall[0], result_wall[1]))
-
         print("Finding the Goal Location")
         print("Finding All Explored Points")
         # find goal location
@@ -262,10 +241,10 @@ class AutoNav(Node):
         print("Find distances between start point and goal coordinates")
         distances_between = list(map(get_distance, correct_coordinates))
         # print(distances_between)
-        print("Finding min distance between start point and goal points")
-        min_dist = np.amin(distances_between)
+        print("Finding Min distance between start point and goal points")
+        max_dist = np.amax(distances_between)
         print("Find the index of the goal coordinate with min dist")
-        goals = np.where(distances_between == min_dist)
+        goals = np.where(distances_between == max_dist)
         # print(goals)
         goal_index = goals[0][0]
         # print(goal_index)
@@ -299,7 +278,6 @@ class AutoNav(Node):
         # rotate by 90 degrees so that the forward direction is at the top of the image
         rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
         rotated_array = np.copy(np.asarray(rotated))
-        self.occdata = rotated_array
         
         print("Find where start is on new map")
         start = np.where(rotated_array == 0)
@@ -307,7 +285,6 @@ class AutoNav(Node):
         start = list(zip(start[0], start[1]))
         start = start[0]
         print(start)
-        self.start = start
 
         print("Find where end is on new map")
         end = np.where(rotated_array == 4)
@@ -315,14 +292,13 @@ class AutoNav(Node):
         end = list(zip(end[0], end[1]))
         end = end[0]
         print(end)
-        self.end = end
 
         # notify start and end locations
-        self.get_logger().info('Start Y: %i Start X: %i' %
-                               (start[1], start[0]))
-        self.get_logger().info('Goal Y: %i Goal X: %i' % (end[1], end[0]))
-
+        self.get_logger().info('Start X: %i Start Y: %i' % (start[0], start[1]))
+        self.get_logger().info('Goal X: %i Goal Y: %i' % (end[0], end[1]))
         
+        path = getListOfPath(rotated_array,start,end)
+        print(path)
         # create image from 2D array using PIL
         # rotated = Image.fromarray(rotated)
         # show the image using grayscale map
@@ -332,194 +308,18 @@ class AutoNav(Node):
         plt.draw_all()
         # pause to make sure the plot gets created
         plt.pause(0.00000000001)
-
-    def scan_callback(self, msg):
-        # self.get_logger().info('In scan_callback')
-        # create numpy array
-        self.laser_range = np.array(msg.ranges)
-        # print to file
-        # np.savetxt(scanfile, self.laser_range)
-        # replace 0's with nan
-        self.laser_range[self.laser_range == 0] = np.nan
-
-    # function to rotate the TurtleBot
-
-    def rotatebot(self, rot_angle):
-        # rotate_angle in radians
-        # self.get_logger().info('In rotatebot')
-        # create Twist object
-        twist = Twist()
-
-        # get current yaw angle
-        current_yaw = self.yaw
-        # log the info
-        self.get_logger().info('Current: %f' % math.degrees(current_yaw))
-        # we are going to use complex numbers to avoid problems when the angles go from
-        # 360 to 0, or from -180 to 180
-        c_yaw = complex(math.cos(current_yaw), math.sin(current_yaw))
-        # calculate desired yaw
-        target_yaw = current_yaw + math.radians(rot_angle)
-        # convert to complex notation
-        c_target_yaw = complex(math.cos(target_yaw), math.sin(target_yaw))
-        self.get_logger().info('Desired: %f' % math.degrees(cmath.phase(c_target_yaw)))
-        # divide the two complex numbers to get the change in direction
-        c_change = c_target_yaw / c_yaw
-        # get the sign of the imaginary component to figure out which way we have to turn
-        c_change_dir = np.sign(c_change.imag)
-        # set linear speed to zero so the TurtleBot rotates on the spot
-        twist.linear.x = 0.0
-        # set the direction to rotate
-        twist.angular.z = c_change_dir * rotatechange
-        # start rotation
-        self.publisher_.publish(twist)
-
-        # we will use the c_dir_diff variable to see if we can stop rotating
-        c_dir_diff = c_change_dir
-        # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
-        # if the rotation direction was 1.0, then we will want to stop when the c_dir_diff
-        # becomes -1.0, and vice versa
-        while(c_change_dir * c_dir_diff > 0):
-            # allow the callback functions to run
-            rclpy.spin_once(self)
-            current_yaw = self.yaw
-            # convert the current yaw to complex form
-            c_yaw = complex(math.cos(current_yaw), math.sin(current_yaw))
-            self.get_logger().info('Current Yaw: %f' % math.degrees(current_yaw))
-            # get difference in angle between current and target
-            c_change = c_target_yaw / c_yaw
-            # get the sign to see if we can stop
-            c_dir_diff = np.sign(c_change.imag)
-            self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
-
-        self.get_logger().info('End Yaw: %f' % math.degrees(current_yaw))
-        # set the rotation speed to 0
-        twist.angular.z = 0.0
-        # stop the rotation
-        self.publisher_.publish(twist)
-
-    def pick_direction(self,case):
-        # case 1: obstacle infront of object
-        if case == 1:
-            start = self.start
-            end = self.end
         
-        if case == 2:
-            start = self.start
-            end = self.end
-            occdata = self.occdata
-            
-            path = getListOfPath(np.ndarray.tolist(occdata),start,end)
-            print(path)
-            end = path[5]
+        self.occdata = np.array([])
+    
+
         
-        # function to norm vectors
-        def unit_vector(vector):
-            """ Returns the unit vector of the vector.  """
-            return vector / np.linalg.norm(vector)
-
-        # function to find angle btw two vectors
-        def angle_between(v1, v2):
-            """ Returns the angle in radians between vectors 'v1' and 'v2'::
-
-                    >>> angle_between((1, 0, 0), (0, 1, 0))
-                    1.5707963267948966
-                    >>> angle_between((1, 0, 0), (1, 0, 0))
-                    0.0
-                    >>> angle_between((1, 0, 0), (-1, 0, 0))
-                    3.141592653589793
-            """
-            v1_u = unit_vector(v1)
-            v2_u = unit_vector(v2)
-            return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
-
-        print("find direction to go in")
-        # find angle between direction vector and current direction
-        direction_vector = (end[0]-start[0], end[1]-start[1])
-        angle_i_want = angle_between((1, 0), direction_vector)
-        angle_i_want = np.degrees(angle_i_want) // 1
-        self.angle_i_want = angle_i_want
-
-        print("angle_i_want")
-        # print out next desired angle
-        print(angle_i_want)
-
-        self.rotatebot(angle_i_want)
-        # start moving
-        twist = Twist()
-        twist.linear.x = speedchange
-        twist.angular.z = 0.0
-        # not sure if this is really necessary, but things seem to work more
-        # reliably with this
-        time.sleep(1)
-        self.publisher_.publish(twist)
-
-    def stopbot(self):
-        self.get_logger().info('In stopbot')
-        # publish to cmd_vel to move TurtleBot
-        twist = Twist()
-        twist.linear.x = 0.0
-        twist.angular.z = 0.0
-        # time.sleep(1)
-        self.publisher_.publish(twist)
-
-    def mover(self):
-        try:
-            rclpy.spin_once(self)
-            # initialize variable to write elapsed time to file
-            # contourCheck = 1
-            # self.get_logger().info('In pick_direction')
-            if self.laser_range.size != 0:
-                # use nanargmax as there are nan's in laser_range added to replace 0's
-                lr2i = np.nanargmax(self.laser_range)
-                self.get_logger().info('Picked direction: %d %f m' %
-                                    (lr2i, self.laser_range[lr2i]))
-            else:
-                lr2i = 0
-                self.get_logger().info('No data!')
-
-            # rotate to that direction
-            self.get_logger().info("Doing initial rotation")
-            self.rotatebot(float(lr2i))
-            twist = Twist()
-            twist.linear.x = speedchange
-            twist.angular.z = 0.0
-            self.publisher_.publish(twist)
-
-            while rclpy.ok():
-                if self.laser_range.size != 0:
-                    # check distances in front of TurtleBot and find values less
-                    # than stop_distance
-                    lri = (self.laser_range[front_angles]
-                           < float(stop_distance)).nonzero()
-                    # self.get_logger().info('Distances: %s' % str(lri))
-                    # print("This is lri:")
-                    # print(lri)
-                    # if the list is not empty
-                    if(len(lri[0]) > 0):
-                        # stop moving
-                        self.stopbot()
-                        # find direction with the largest distance from the Lidar
-                        # rotate to that direction
-                        # start moving
-                        self.pick_direction(2)
-                # allow the callback functions to run
-                rclpy.spin_once(self)
-
-        except Exception as e:
-            print(e)
-
-        # Ctrl-c detected
-        finally:
-            # stop moving
-            self.stopbot()
 
 
 def main(args=None):
     rclpy.init(args=args)
-
-    auto_nav = AutoNav()
-    auto_nav.mover()
-
+    
+    mapping = Mapping()
+    rclpy.spin(mapping)
     # create matplotlib figure
     plt.ion()
     plt.show()
@@ -527,7 +327,7 @@ def main(args=None):
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    auto_nav.destroy_node()
+    mapping.destroy_node()
     rclpy.shutdown()
 
 

@@ -34,7 +34,7 @@ from contextlib import suppress
 # constants
 rotatechange = 0.5
 speedchange = 0.1
-occ_bins = [-1, 0, 55, 100]
+occ_bins = [-1, 0, 50, 100]
 stop_distance = 0.25
 front_angle = 30
 front_angles = range(-front_angle, front_angle+1, 1)
@@ -204,6 +204,16 @@ class AutoNav(Node):
         result_wall = np.where(odata == 3)
         coordinates_wall = list(zip(result_wall[0], result_wall[1]))
 
+        '''
+        print("Making the Walls Larger on Original Map")
+        woah = 1
+        for wall_x, wall_y in [coord for coord in coordinates_wall]:
+            for i in range(-woah, woah):
+                for j in range(-woah, woah):
+                    with suppress(IndexError):
+                        odata[wall_x + i, wall_y + j] = 3
+        '''
+
         print("Finding the Goal Location")
         print("Finding All Explored Points")
         # find goal location
@@ -299,7 +309,6 @@ class AutoNav(Node):
         # rotate by 90 degrees so that the forward direction is at the top of the image
         rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
         rotated_array = np.copy(np.asarray(rotated))
-        self.occdata = rotated_array
         
         print("Find where start is on new map")
         start = np.where(rotated_array == 0)
@@ -332,6 +341,8 @@ class AutoNav(Node):
         plt.draw_all()
         # pause to make sure the plot gets created
         plt.pause(0.00000000001)
+        
+        self.occdata = np.array([])
 
     def scan_callback(self, msg):
         # self.get_logger().info('In scan_callback')
@@ -397,61 +408,63 @@ class AutoNav(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
-    def pick_direction(self,case):
-        # case 1: obstacle infront of object
-        if case == 1:
-            start = self.start
-            end = self.end
+    def pick_direction(self):
         
-        if case == 2:
-            start = self.start
-            end = self.end
-            occdata = self.occdata
-            
-            path = getListOfPath(np.ndarray.tolist(occdata),start,end)
-            print(path)
-            end = path[5]
+        where_to_go = self.where_to_go
+        print("check if there is any instruction on where to go")
+        if where_to_go != None:
+            self.get_logger().info('starting pick direction')
+            for i in range(len(where_to_go)-1):
+                next_closest = where_to_go[i]
+
+                # function to norm vectors
+                def unit_vector(vector):
+                    """ Returns the unit vector of the vector.  """
+                    return vector / np.linalg.norm(vector)
+
+                # function to find angle btw two vectors
+                def angle_between(v1, v2):
+                    """ Returns the angle in radians between vectors 'v1' and 'v2'::
+
+                            >>> angle_between((1, 0, 0), (0, 1, 0))
+                            1.5707963267948966
+                            >>> angle_between((1, 0, 0), (1, 0, 0))
+                            0.0
+                            >>> angle_between((1, 0, 0), (-1, 0, 0))
+                            3.141592653589793
+                    """
+                    v1_u = unit_vector(v1)
+                    v2_u = unit_vector(v2)
+                    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
+                print("find direction to go in")
+                # find angle between direction vector and current direction
+                direction_vector = (next_closest[0]-self.start[0], next_closest[1]-self.start[1])
+                angle_i_want = angle_between((0, 1), direction_vector)
+                angle_i_want = np.degrees(angle_i_want) // 1
+                self.angle_i_want = -1 * angle_i_want
+
+                print("print out next_closest and angle_i_want")
+                # print out next closest location & desired angle
+                print(next_closest)
+                print(angle_i_want)
+
+                # find the distance between both points
+                length = np.linalg.norm(direction_vector)
+                time_taken = length // speedchange
+
+                self.rotatebot(float(angle_i_want))
+                # start moving
+                self.get_logger().info('Start moving[pick_direction]')
+                twist = Twist()
+                twist.linear.x = speedchange
+                twist.angular.z = 0.0
+                # not sure if this is really necessary, but things seem to work more
+                # reliably with this
+                time.sleep(1)
+                self.publisher_.publish(twist)
+                time.sleep(time_taken)
         
-        # function to norm vectors
-        def unit_vector(vector):
-            """ Returns the unit vector of the vector.  """
-            return vector / np.linalg.norm(vector)
-
-        # function to find angle btw two vectors
-        def angle_between(v1, v2):
-            """ Returns the angle in radians between vectors 'v1' and 'v2'::
-
-                    >>> angle_between((1, 0, 0), (0, 1, 0))
-                    1.5707963267948966
-                    >>> angle_between((1, 0, 0), (1, 0, 0))
-                    0.0
-                    >>> angle_between((1, 0, 0), (-1, 0, 0))
-                    3.141592653589793
-            """
-            v1_u = unit_vector(v1)
-            v2_u = unit_vector(v2)
-            return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
-
-        print("find direction to go in")
-        # find angle between direction vector and current direction
-        direction_vector = (end[0]-start[0], end[1]-start[1])
-        angle_i_want = angle_between((1, 0), direction_vector)
-        angle_i_want = np.degrees(angle_i_want) // 1
-        self.angle_i_want = angle_i_want
-
-        print("angle_i_want")
-        # print out next desired angle
-        print(angle_i_want)
-
-        self.rotatebot(angle_i_want)
-        # start moving
-        twist = Twist()
-        twist.linear.x = speedchange
-        twist.angular.z = 0.0
-        # not sure if this is really necessary, but things seem to work more
-        # reliably with this
-        time.sleep(1)
-        self.publisher_.publish(twist)
 
     def stopbot(self):
         self.get_logger().info('In stopbot')
@@ -480,10 +493,6 @@ class AutoNav(Node):
             # rotate to that direction
             self.get_logger().info("Doing initial rotation")
             self.rotatebot(float(lr2i))
-            twist = Twist()
-            twist.linear.x = speedchange
-            twist.angular.z = 0.0
-            self.publisher_.publish(twist)
 
             while rclpy.ok():
                 if self.laser_range.size != 0:
@@ -501,7 +510,9 @@ class AutoNav(Node):
                         # find direction with the largest distance from the Lidar
                         # rotate to that direction
                         # start moving
-                        self.pick_direction(2)
+                        self.pick_direction()
+                        
+                self.pick_direction()
                 # allow the callback functions to run
                 rclpy.spin_once(self)
 

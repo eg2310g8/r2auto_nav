@@ -32,9 +32,9 @@ from PIL import Image
 from contextlib import suppress
 
 # constants
-rotatechange = 0.5
-speedchange = 0.1
-occ_bins = [-1, 0, 55, 100]
+rotatechange = 1
+speedchange = 0.10
+occ_bins = [-1, 0, 50, 100]
 stop_distance = 0.25
 front_angle = 30
 front_angles = range(-front_angle, front_angle+1, 1)
@@ -74,10 +74,10 @@ def getListOfPath(currMap, start, end):
 
     for i in currMap:
         for j in i:
-            if j == 1:
+            if j == 1 or j ==4:
                 # this means that this is unexplored
                 innerMat.append(0)
-            elif j == 2 or j == 0:
+            elif j == 2 or j == 5:
                 # this means this is explored & unoccupied
                 innerMat.append(0)
             elif j == 3:
@@ -100,7 +100,7 @@ class AutoNav(Node):
         # create publisher for moving TurtleBot
         self.publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
         # self.get_logger().info('Created publisher')
-
+        
         # create subscription to track orientation
         self.odom_subscription = self.create_subscription(
             Odometry,
@@ -113,7 +113,7 @@ class AutoNav(Node):
         self.roll = 0
         self.pitch = 0
         self.yaw = 0
-
+        
         # create subscription to track occupancy
         self.occ_subscription = self.create_subscription(
             OccupancyGrid,
@@ -122,14 +122,11 @@ class AutoNav(Node):
             qos_profile_sensor_data)
         self.occ_subscription  # prevent unused variable warning
         self.occdata = np.array([])
-        self.map_res = 0.5
-        self.start = []
-        self.end = []
-        self.where_to_go = []
-        self.angle_i_want = 5
+        self.start = (0,0)
+        self.end = (0,0)
         self.tfBuffer = tf2_ros.Buffer()
         self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
-
+        '''
         # create subscription to track lidar
         self.scan_subscription = self.create_subscription(
             LaserScan,
@@ -138,13 +135,15 @@ class AutoNav(Node):
             qos_profile_sensor_data)
         self.scan_subscription  # prevent unused variable warning
         self.laser_range = np.array([])
-
+        '''
+    
+    
     def odom_callback(self, msg):
         # self.get_logger().info('In odom_callback')
         orientation_quat = msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(
             orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
-
+    
     def occ_callback(self, msg):
         self.get_logger().info('In occ_callback')
         # create numpy array
@@ -163,24 +162,21 @@ class AutoNav(Node):
         # find transform to obtain base_link coordinates in the map frame
         # lookup_transform(target_frame, source_frame, time)
         try:
-            trans = self.tfBuffer.lookup_transform(
-                'map', 'base_link', rclpy.time.Time())
-        except (LookupException, ConnectivityException, ExtrapolationException) as e:
+            trans = self.tfBuffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        except (LookupException, ConnectivityException, ExtrapolationException):
             self.get_logger().info('No transformation found')
-            return
 
+        print("getting cur_pos")
         # get start location !
         cur_pos = trans.transform.translation
         cur_rot = trans.transform.rotation
         # self.get_logger().info('Trans: %f, %f' % (cur_pos.x, cur_pos.y))
         # convert quaternion to Euler angles
-        roll, pitch, yaw = euler_from_quaternion(
-            cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
+        self.roll, self.pitch, self.yaw = euler_from_quaternion(cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
         # self.get_logger().info('Rot-Yaw: R: %f D: %f' % (yaw, np.degrees(yaw)))
 
         # get map resolution (0.05m/cell)
         map_res = msg.info.resolution
-        self.map_res = map_res
         #self.get_logger().info('Resolution: %f' % (map_res))
         # get map origin struct has field of x,y, and z
         map_origin = msg.info.origin.position
@@ -204,13 +200,21 @@ class AutoNav(Node):
         result_wall = np.where(odata == 3)
         coordinates_wall = list(zip(result_wall[0], result_wall[1]))
 
+        print("Making the Walls Larger on Original Map")
+        woah = 1
+        for wall_x, wall_y in [coord for coord in coordinates_wall]:
+            for i in range(-woah, woah):
+                for j in range(-woah, woah):
+                    with suppress(IndexError):
+                        odata[wall_x + i, wall_y + j] = 3
+
         print("Finding the Goal Location")
         print("Finding All Explored Points")
         # find goal location
-        result_explored = np.where(odata == 2)
-        coordinates_explored = list(
-            zip(result_explored[0], result_explored[1]))
-        # print(coordinates_explored)
+        result_unexplored = np.where(odata == 2)
+        coordinates_unexplored = list(
+            zip(result_unexplored[0], result_unexplored[1]))
+        # print(coordinates_unexplored)
 
         # def check_if_neighbour_unexplored(a,b):
         def check_if_neighbour_unexplored(place):
@@ -228,7 +232,7 @@ class AutoNav(Node):
         correct_coordinates = []
         
         print("Checking if Unexplored Points are next to Explored Points")
-        for coord in coordinates_explored:
+        for coord in coordinates_unexplored:
             if check_if_neighbour_unexplored(coord) == True:
                 correct_coordinates.append(coord)
 
@@ -238,8 +242,8 @@ class AutoNav(Node):
         def check_if_neighbour_wall(place):
             a = place[0]
             b = place[1]
-            for i in range(-2, 2):
-                for j in range(-2, 2):
+            for i in range(-1, 1):
+                for j in range(-1, 1):
                     with suppress(IndexError):
                         if odata[a+i, b+j] == 3:
                             return True
@@ -262,7 +266,7 @@ class AutoNav(Node):
         print("Find distances between start point and goal coordinates")
         distances_between = list(map(get_distance, correct_coordinates))
         # print(distances_between)
-        print("Finding min distance between start point and goal points")
+        print("Finding Min distance between start point and goal points")
         min_dist = np.amin(distances_between)
         print("Find the index of the goal coordinate with min dist")
         goals = np.where(distances_between == min_dist)
@@ -276,24 +280,51 @@ class AutoNav(Node):
         print("set start location to 0 on original map")
         # set current robot location to 0
         print(grid_y,grid_x)
-        for i in range(-1, 1):
-                for j in range(-1, 1):
-                    with suppress(IndexError):
-                        odata[grid_y+i, grid_x+j] = 0
+        odata[grid_y][grid_x] = 0
 
         print("set goal location to 4 on original map")
         # set goal location to 4
-        for i in range(-1, 1):
-                for j in range(-1, 1):
-                    with suppress(IndexError):
-                        odata[goal_x+i, goal_y+j] = 4
+        odata[goal_x][goal_y] = 4
 
         print("transfer original array to image with shifting")
         # print("Goal edits done")
         # create image from 2D array using PIL
         img = Image.fromarray(odata)
-        img_transformed = Image.new(img.mode, (iwidth,iheight), map_bg_color)
-        img_transformed.paste(img, (0,0))
+        # print("odata to img done")
+        # find center of image
+        i_centerx = iwidth/2
+        i_centery = iheight/2
+        # find how much to shift the image to move grid_x and grid_y to center of image
+        shift_x = round(grid_x - i_centerx)
+        shift_y = round(grid_y - i_centery)
+        # self.get_logger().info('Shift Y: %i Shift X: %i' % (shift_y, shift_x))
+
+        # pad image to move robot position to the center
+        # adapted from https://note.nkmk.me/en/python-pillow-add-margin-expand-canvas/
+        left = 0
+        right = 0
+        top = 0
+        bottom = 0
+        if shift_x > 0:
+            # pad right margin
+            right = 2 * shift_x
+        else:
+            # pad left margin
+            left = 2 * (-shift_x)
+
+        if shift_y > 0:
+            # pad bottom margin
+            bottom = 2 * shift_y
+        else:
+            # pad top margin
+            top = 2 * (-shift_y)
+
+        # create new image
+        new_width = iwidth + right + left
+        new_height = iheight + top + bottom
+        img_transformed = Image.new(
+            img.mode, (new_width, new_height), map_bg_color)
+        img_transformed.paste(img, (left, top))
 
         print("Rotate the array as necessary")
         # rotate by 90 degrees so that the forward direction is at the top of the image
@@ -303,26 +334,22 @@ class AutoNav(Node):
         
         print("Find where start is on new map")
         start = np.where(rotated_array == 0)
-        print("start is", start)
         start = list(zip(start[0], start[1]))
         start = start[0]
-        print(start)
         self.start = start
+        print(start)
 
         print("Find where end is on new map")
         end = np.where(rotated_array == 4)
-        print("end is", end)
         end = list(zip(end[0], end[1]))
         end = end[0]
-        print(end)
         self.end = end
+        print(end)
 
         # notify start and end locations
-        self.get_logger().info('Start Y: %i Start X: %i' %
-                               (start[1], start[0]))
+        self.get_logger().info('Start Y: %i Start X: %i' % (start[1], start[0]))
         self.get_logger().info('Goal Y: %i Goal X: %i' % (end[1], end[0]))
 
-        
         # create image from 2D array using PIL
         # rotated = Image.fromarray(rotated)
         # show the image using grayscale map
@@ -333,6 +360,7 @@ class AutoNav(Node):
         # pause to make sure the plot gets created
         plt.pause(0.00000000001)
 
+    '''
     def scan_callback(self, msg):
         # self.get_logger().info('In scan_callback')
         # create numpy array
@@ -341,6 +369,7 @@ class AutoNav(Node):
         # np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
         self.laser_range[self.laser_range == 0] = np.nan
+    '''
 
     # function to rotate the TurtleBot
 
@@ -384,12 +413,12 @@ class AutoNav(Node):
             current_yaw = self.yaw
             # convert the current yaw to complex form
             c_yaw = complex(math.cos(current_yaw), math.sin(current_yaw))
-            self.get_logger().info('Current Yaw: %f' % math.degrees(current_yaw))
+            # self.get_logger().info('Current Yaw: %f' % math.degrees(current_yaw))
             # get difference in angle between current and target
             c_change = c_target_yaw / c_yaw
             # get the sign to see if we can stop
             c_dir_diff = np.sign(c_change.imag)
-            self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
+            # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
 
         self.get_logger().info('End Yaw: %f' % math.degrees(current_yaw))
         # set the rotation speed to 0
@@ -397,21 +426,17 @@ class AutoNav(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
-    def pick_direction(self,case):
-        # case 1: obstacle infront of object
-        if case == 1:
-            start = self.start
-            end = self.end
-        
-        if case == 2:
-            start = self.start
-            end = self.end
-            occdata = self.occdata
-            
-            path = getListOfPath(np.ndarray.tolist(occdata),start,end)
-            print(path)
-            end = path[5]
-        
+    def stopbot(self):
+        self.get_logger().info('In stopbot')
+        # publish to cmd_vel to move TurtleBot
+        twist = Twist()
+        twist.linear.x = 0.0
+        twist.angular.z = 0.0
+        time.sleep(1)
+        self.publisher_.publish(twist)
+    
+    def pick_direction(self,rotated_array,start,end):
+
         # function to norm vectors
         def unit_vector(vector):
             """ Returns the unit vector of the vector.  """
@@ -431,20 +456,34 @@ class AutoNav(Node):
             v1_u = unit_vector(v1)
             v2_u = unit_vector(v2)
             return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+        
+        print("Run astar code on start, end, and rotated_array")
+        # find out how to get to chosen location
+        where_to_go = getListOfPath(rotated_array, start, end)
+        print("check if there is any instruction on where to go")
+        if where_to_go != None:
+            print("pop whatever it gives")
+            where_to_go.pop(0)
+            print("pop the next_closest location")
+            next_closest = where_to_go.pop(0)
 
-        print("find direction to go in")
-        # find angle between direction vector and current direction
-        direction_vector = (end[0]-start[0], end[1]-start[1])
-        angle_i_want = angle_between((1, 0), direction_vector)
-        angle_i_want = np.degrees(angle_i_want) // 1
-        self.angle_i_want = angle_i_want
+            print("find direction to go in")
+            # find angle between direction vector and current direction
+            direction_vector = (next_closest[0]-start[0], next_closest[1]-start[1])
+            angle_i_want = angle_between((0, 1), direction_vector)
 
-        print("angle_i_want")
-        # print out next desired angle
-        print(angle_i_want)
+            print("print out next_closest and angle_i_want")
+            # print out next closest location & desired angle
+            print(next_closest)
+            print(np.degrees(angle_i_want))
 
-        self.rotatebot(angle_i_want)
+            self.rotatebot(angle_i_want)
+
+        '''
+        # rotate to that direction
+        self.rotatebot(float(lri))
         # start moving
+        self.get_logger().info('Start moving')
         twist = Twist()
         twist.linear.x = speedchange
         twist.angular.z = 0.0
@@ -452,39 +491,56 @@ class AutoNav(Node):
         # reliably with this
         time.sleep(1)
         self.publisher_.publish(twist)
-
-    def stopbot(self):
-        self.get_logger().info('In stopbot')
-        # publish to cmd_vel to move TurtleBot
+        '''
+        '''
+        self.stopbot()
+        print("now doing rclpy once")
+        for i in range(5):
+            rclpy.spin_once(self,timeout_sec=5)
+        print("now the angle i want is:",self.angle_i_want)
+        self.rotatebot(self.angle_i_want)
         twist = Twist()
-        twist.linear.x = 0.0
+        twist.linear.x = speedchange
         twist.angular.z = 0.0
-        # time.sleep(1)
+        time.sleep(1)
         self.publisher_.publish(twist)
+        time.sleep(2)
+        self.stopbot()
+        '''
 
     def mover(self):
         try:
-            rclpy.spin_once(self)
-            # initialize variable to write elapsed time to file
-            # contourCheck = 1
-            # self.get_logger().info('In pick_direction')
-            if self.laser_range.size != 0:
-                # use nanargmax as there are nan's in laser_range added to replace 0's
-                lr2i = np.nanargmax(self.laser_range)
-                self.get_logger().info('Picked direction: %d %f m' %
-                                    (lr2i, self.laser_range[lr2i]))
-            else:
-                lr2i = 0
-                self.get_logger().info('No data!')
-
-            # rotate to that direction
-            self.get_logger().info("Doing initial rotation")
-            self.rotatebot(float(lr2i))
+        
+            print("sending out twist msg")
             twist = Twist()
             twist.linear.x = speedchange
             twist.angular.z = 0.0
+            time.sleep(1)
             self.publisher_.publish(twist)
+            print("published, now waiting 5 second")
+            time.sleep(5)
 
+            while rclpy.ok():
+                
+                print("rclpy is okay")
+                print("spinning done")
+                self.pick_direction(self.occdata,self.start,self.end)
+                twist = Twist()
+                twist.linear.x = speedchange
+                twist.angular.z = 0.0
+                time.sleep(1)
+                self.publisher_.publish(twist)
+                time.sleep(5)
+                self.stopbot()
+
+            '''
+            # initialize variable to write elapsed time to file
+            # contourCheck = 1
+
+            # find direction with the largest distance from the Lidar,
+            # rotate to that direction, and start moving
+            self.pick_direction()
+            
             while rclpy.ok():
                 if self.laser_range.size != 0:
                     # check distances in front of TurtleBot and find values less
@@ -492,8 +548,8 @@ class AutoNav(Node):
                     lri = (self.laser_range[front_angles]
                            < float(stop_distance)).nonzero()
                     # self.get_logger().info('Distances: %s' % str(lri))
-                    # print("This is lri:")
-                    # print(lri)
+                    print("This is lri:")
+                    print(lri)
                     # if the list is not empty
                     if(len(lri[0]) > 0):
                         # stop moving
@@ -501,10 +557,11 @@ class AutoNav(Node):
                         # find direction with the largest distance from the Lidar
                         # rotate to that direction
                         # start moving
-                        self.pick_direction(2)
+                        self.pick_direction()
+
                 # allow the callback functions to run
                 rclpy.spin_once(self)
-
+        '''
         except Exception as e:
             print(e)
 
@@ -519,10 +576,6 @@ def main(args=None):
 
     auto_nav = AutoNav()
     auto_nav.mover()
-
-    # create matplotlib figure
-    plt.ion()
-    plt.show()
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically

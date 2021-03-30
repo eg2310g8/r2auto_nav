@@ -64,7 +64,7 @@ class Astar:
             node_tmp = node_tmp.parent
         return list(reversed(path))
 
-    def run(self, point_start, point_end, allow_diagonals=True):
+    def run(self, point_start, point_end, allow_diagonals=False):
         matrix = self.mat
         start = self.Node(point_start[0], point_start[1])
         end = self.Node(point_end[0], point_end[1])

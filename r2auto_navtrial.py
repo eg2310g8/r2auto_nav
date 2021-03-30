@@ -623,11 +623,12 @@ def main(args=None):
     rclpy.init(args=args)
 
     auto_nav = AutoNav()
-    auto_nav.mover()
-
+    
     # create matplotlib figure
     plt.ion()
     plt.show()
+    
+    auto_nav.mover()
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
