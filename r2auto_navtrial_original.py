@@ -257,13 +257,16 @@ class AutoNav(Node):
         # print(correct_coordinates)
 
         def get_distance(place):
-            return (place[0]-grid_x)**2 + (place[1]-grid_y)**2
+            print(place)
+            print(grid_x,grid_y)
+            res = (place[1]-grid_x)**2 + (place[0]-grid_y)**2
+            return res
 
         print("Find distances between start point and goal coordinates")
         distances_between = list(map(get_distance, correct_coordinates))
         # print(distances_between)
         print("Finding min distance between start point and goal points")
-        min_dist = np.amin(distances_between)
+        min_dist = min(distances_between)
         print("Find the index of the goal coordinate with min dist")
         goals = np.where(distances_between == min_dist)
         # print(goals)
@@ -276,8 +279,8 @@ class AutoNav(Node):
         print("set start location to 0 on original map")
         # set current robot location to 0
         print(grid_y,grid_x)
-        for i in range(-1, 1):
-                for j in range(-1, 1):
+        for i in range(-2, 2):
+                for j in range(-2, 2):
                     with suppress(IndexError):
                         odata[grid_y+i, grid_x+j] = 0
 
@@ -287,6 +290,15 @@ class AutoNav(Node):
                 for j in range(-1, 1):
                     with suppress(IndexError):
                         odata[goal_x+i, goal_y+j] = 4
+        
+        # to see all possible goals, uncomment
+        '''
+        for i in range(-1, 1):
+                for j in range(-1, 1):
+                    for goals in correct_coordinates:
+                        with suppress(IndexError):
+                            odata[goals[0]+i, goals[1]+j] = 4
+        '''
 
         print("transfer original array to image with shifting")
         # print("Goal edits done")
@@ -452,6 +464,40 @@ class AutoNav(Node):
         # reliably with this
         time.sleep(1)
         self.publisher_.publish(twist)
+    
+    def avoid_obstacle(self):
+        angle_found = False
+        try:
+            while angle_found == False:
+                rclpy.spin_once(self)
+                # initialize variable to write elapsed time to file
+                # contourCheck = 1
+                # self.get_logger().info('In pick_direction')
+                if self.laser_range.size != 0:
+                    # use nanargmax as there are nan's in laser_range added to replace 0's
+                    lr2i = np.nanargmax(self.laser_range[front_angles])
+                    self.get_logger().info('Picked direction: %d %f m' %
+                                        (lr2i, self.laser_range[lr2i]))
+                    angle_found = True
+                else:
+                    lr2i = 0
+                    self.get_logger().info('No data!')
+            
+        finally:
+            self.get_logger().info('Obstacle being avoided!')
+
+        # rotate to that direction
+        self.get_logger().info("Doing initial rotation")
+        self.rotatebot(float(lr2i))
+        twist = Twist()
+        twist.linear.x = speedchange
+        twist.angular.z = 0.0
+        time.sleep(1)
+        self.publisher_.publish(twist)
+        time.sleep(2)
+        self.pick_direction(1)
+        
+        
 
     def stopbot(self):
         self.get_logger().info('In stopbot')
@@ -501,7 +547,7 @@ class AutoNav(Node):
                         # find direction with the largest distance from the Lidar
                         # rotate to that direction
                         # start moving
-                        self.pick_direction(2)
+                        self.avoid_obstacle()
                 # allow the callback functions to run
                 rclpy.spin_once(self)
 
