@@ -31,6 +31,7 @@ setup(
             'orgybaby = auto_nav.r2auto_navtrial_original:main',
             'mapping = auto_nav.r2_getmapinfo:main',
             'navi = auto_nav.r2_dothenavigation:main',
+            'autonav = auto_nav.r2auto_navtrial_original_alissacopy:main',
         ],
     },
 )
