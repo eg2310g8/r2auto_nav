@@ -48,6 +48,7 @@ map_bg_color = 1
 occdata = np.array([])
 calculated_distance_to_goal = math.inf
 last_zero_degree_distance = math.inf
+list_of_goals = []
 current_zero_degree_distance = 0
 required_angle_turn_in_degree = 0
 turn_right = False
@@ -159,7 +160,7 @@ class AutoNav(Node):
             orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
 
     def occ_callback(self, msg):
-        global occdata, required_angle_turn_in_degree
+        global occdata, required_angle_turn_in_degree, list_of_goals
         self.get_logger().info('In occ_callback')
 
         # Create numpy array
@@ -303,14 +304,13 @@ class AutoNav(Node):
             for j in range(-1, 1):
                 with suppress(IndexError):
                     odata[goal_x+i, goal_y+j] = 4
+
         # to see all possible goals, uncomment
-        '''
         for i in range(-1, 1):
-                for j in range(-1, 1):
-                    for goals in correct_coordinates:
-                        with suppress(IndexError):
-                            odata[goals[0]+i, goals[1]+j] = 4
-        '''
+            for j in range(-1, 1):
+                for goals in correct_coordinates:
+                    with suppress(IndexError):
+                        odata[goals[0]+i, goals[1]+j] = 4
 
         # print("Transfer original array to image with shifting")
         # print("Goal edits done")
@@ -339,6 +339,7 @@ class AutoNav(Node):
         end = np.where(rotated_array == 4)
         # print("end is", end)
         end = list(zip(end[0], end[1]))
+        list_of_goals = end
         end = end[0]
         self.endpoint = end
         print("End")
@@ -427,7 +428,7 @@ class AutoNav(Node):
     def rotate_bot_to_face_goal(self):
 
         print("In rotate_bot_to_face_goal")
-        global calculated_distance_to_goal, last_zero_degree_distance, turn_right, going_straight
+        global calculated_distance_to_goal, last_zero_degree_distance, turn_right, going_straight, list_of_goals
         # Ensure that laser_range.size is detecting something
         while (self.laser_range.size == 0 or self.startpoint == [] or self.endpoint == []):
             print("Spin to get a valid startpoint, endpoint and lidar data")
@@ -454,7 +455,7 @@ class AutoNav(Node):
             v1_u = unit_vector(v1)
             v2_u = unit_vector(v2)
             return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
-
+        print(list_of_goals)
         print("Calculated minimum distance to goal in metres")
         calculated_distance_to_goal = math.sqrt(
             ((self.endpoint[0] - self.startpoint[0]) * 0.05)**2 + ((self.endpoint[1] - self.startpoint[1]) * 0.05)**2)
@@ -478,11 +479,28 @@ class AutoNav(Node):
         print("Angle_i_want")
         # print out next desired angle
         print(angle_i_want)
-        while abs(self.startpoint[0] - self.endpoint[0]) <= (math.pi/6 * calculated_distance_to_goal) or self.endpoint[1] >= self.startpoint[1]:
-            print("Spin spin until aligned in the 0 degrees...will it ever terminate?")
+        breakNow = False
+        for i in range(0, 361, 1):
+            print("Spin-spin spinnnnn ~~~")
+            if (breakNow):
+                break
             self.rotatebot(1)
             self.stopbot()
+            for j in list_of_goals:
+                print("Calculated minimum distance to goal in metres")
+                calculated_distance_to_goal = math.sqrt(
+                    ((j[0] - self.startpoint[0]) * 0.05)**2 + ((j[1] - self.startpoint[1]) * 0.05)**2)
+                print(calculated_distance_to_goal)
+                if (abs(self.startpoint[0] - j[0]) <= (math.pi / 12 * calculated_distance_to_goal) and j[1] >= self.startpoint[1]):
+                    breakNow = True
+                    break
             rclpy.spin_once(self)
+
+        # while abs(self.startpoint[0] - self.endpoint[0]) <= (math.pi/12 * calculated_distance_to_goal) or self.endpoint[1] >= self.startpoint[1]:
+        #     print("Spin spin until aligned in the 0 degrees...will it ever terminate?")
+        #     self.rotatebot(1)
+        #     self.stopbot()
+        #     rclpy.spin_once(self)
         rclpy.spin_once(self)
         print("It terminated!")
         last_zero_degree_distance = calculated_distance_to_goal
