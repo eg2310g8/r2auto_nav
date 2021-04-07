@@ -371,6 +371,7 @@ class AutoNav(Node):
                     if contourCheck and len(occdata) != 0:
                         print("Inside contourCheck:")
                         if self.closure():
+                            self.stopbot()
                             print("Inside selfclosure contourcheck:")
                             # map is complete, so save current time into file
                             with open("maptime.txt", "w") as f:
