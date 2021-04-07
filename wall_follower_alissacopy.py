@@ -26,8 +26,8 @@ import cmath
 import time
 
 # constants
-rotatechange = 0.1
-speedchange = 0.05
+rotatechange = 0.5
+speedchange = 0.5
 occ_bins = [-1, 0, 100, 101]
 stop_distance = 0.25
 front_angle = 30
@@ -243,17 +243,17 @@ class AutoNav(Node):
         self.publisher_.publish(twist)
 
     def turn_left(self):
-        lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
-            stop_distance)).nonzero()
+        lrleft = (self.laser_range[ninety_degrees_left_side_angles] < float(
+            0.4)).nonzero()
         # ninety_degree_left = self.laser_range[90]
         # while (ninety_degree_left > 0.25):
-        while len(lrleft[0]) > 0:
+        while len(lrleft[0]) <= 0:
             print("Spin until aligned to the left")
             self.rotatebot(10)
             self.stopbot()
             rclpy.spin_once(self)
-            lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
-                stop_distance)).nonzero()
+            lrleft = (self.laser_range[ninety_degrees_left_side_angles] < float(
+                0.4)).nonzero()
             # ninety_degree_left = self.laser_range[90]
             time.sleep(1)
         self.get_logger().info('Start moving left')
