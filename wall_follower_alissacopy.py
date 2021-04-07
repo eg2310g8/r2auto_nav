@@ -230,7 +230,7 @@ class AutoNav(Node):
             time.sleep(1)
             lri = (self.laser_range[front_angles] < float(
                 stop_distance)).nonzero()
-            self.get_logger().info('Distances left angles: %s' % str(lri))
+            self.get_logger().info('Distances front angles: %s' % str(lri))
 
         # start moving
         self.get_logger().info('Start moving')
@@ -243,13 +243,18 @@ class AutoNav(Node):
         self.publisher_.publish(twist)
 
     def turn_left(self):
-        ninety_degree_left = self.laser_range[90]
-        while (ninety_degree_left > 0.25):
+        lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
+            stop_distance)).nonzero()
+        # ninety_degree_left = self.laser_range[90]
+        # while (ninety_degree_left > 0.25):
+        while len(lrleft[0]) > 0:
             print("Spin until aligned to the left")
             self.rotatebot(10)
             self.stopbot()
             rclpy.spin_once(self)
-            ninety_degree_left = self.laser_range[90]
+            lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
+                stop_distance)).nonzero()
+            # ninety_degree_left = self.laser_range[90]
             time.sleep(1)
         self.get_logger().info('Start moving left')
         twist = Twist()
@@ -284,7 +289,7 @@ class AutoNav(Node):
             twist.angular.z = 0.0
             rclpy.spin_once(self)
             lrback = (self.laser_range[back_angles] < float(
-                stop_distance)).nonzero()
+                0.30)).nonzero()
             self.publisher_.publish(twist)
         self.stopbot()
         self.rotatebot(90)
