@@ -368,20 +368,20 @@ class AutoNav(Node):
 
             while rclpy.ok():
                 if self.laser_range.size != 0:
-                    if contourCheck and len(occdata) != 0:
-                        print("Inside contourCheck:")
-                        if self.closure():
-                            self.stopbot()
-                            print("Inside selfclosure contourcheck:")
-                            # map is complete, so save current time into file
-                            with open("maptime.txt", "w") as f:
-                                f.write("Elapsed Time: " +
-                                        str(time.time() - start_time))
-                            contourCheck = 0
-                            # save the map
-                            cv2.imwrite('mazemap.png', occdata)
-                            print("Map is complete!")
-                            break
+                    # if contourCheck and len(occdata) != 0:
+                    #     print("Inside contourCheck:")
+                    #     if self.closure():
+                    #         self.stopbot()
+                    #         print("Inside selfclosure contourcheck:")
+                    #         # map is complete, so save current time into file
+                    #         with open("maptime.txt", "w") as f:
+                    #             f.write("Elapsed Time: " +
+                    #                     str(time.time() - start_time))
+                    #         contourCheck = 0
+                    #         # save the map
+                    #         cv2.imwrite('mazemap.png', occdata)
+                    #         print("Map is complete!")
+                    #         break
 
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
@@ -397,7 +397,7 @@ class AutoNav(Node):
                     # self.get_logger().info('Distances left angles: %s' % str(lrleft))
 
                     # if the list is not empty
-                    if current_lrleft > 0.35:
+                    if current_lrleft > 0.25:
                         self.stopbot()
                         self.turn_left()
                         # self.pick_direction()
