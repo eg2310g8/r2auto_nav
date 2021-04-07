@@ -251,6 +251,14 @@ class AutoNav(Node):
             rclpy.spin_once(self)
             ninety_degree_left = self.laser_range[90]
             time.sleep(1)
+        self.get_logger().info('Start moving left')
+        twist = Twist()
+        twist.linear.x = speedchange
+        twist.angular.z = 0.0
+        # not sure if this is really necessary, but things seem to work more
+        # reliably with this
+        time.sleep(1)
+        self.publisher_.publish(twist)
 
     def stopbot(self):
         self.get_logger().info('In stopbot')
@@ -391,6 +399,7 @@ class AutoNav(Node):
                     if current_lrleft > 0.35:
                         self.stopbot()
                         self.turn_left()
+                        # self.pick_direction()
 
                     elif (len(lri[0]) > 0):
                         # stop moving
