@@ -392,7 +392,7 @@ class AutoNav(Node):
                         self.stopbot()
                         self.turn_left()
 
-                    eli f(len(lri[0]) > 0):
+                    elif (len(lri[0]) > 0):
                         # stop moving
                         self.stopbot()
                         # find direction with the largest distance from the Lidar
