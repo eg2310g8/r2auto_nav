@@ -244,7 +244,7 @@ class AutoNav(Node):
 
     def turn_left(self):
         ninety_degree_left = self.laser_range[90]
-        while (ninety_degree_left > 0.35):
+        while (ninety_degree_left > 0.25):
             print("Spin until aligned to the left")
             self.rotatebot(10)
             self.stopbot()
@@ -387,8 +387,8 @@ class AutoNav(Node):
                     # than stop_distance
                     lri = (self.laser_range[front_angles]
                            < float(stop_distance)).nonzero()
-                    # lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
-                    # stop_distance)).nonzero()
+                    lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
+                        stop_distance)).nonzero()
                     # current_lrleft = np.sum(
                     # self.laser_range[ninety_degrees_left_side_angles])
                     current_lrleft = self.laser_range[90]
@@ -397,7 +397,8 @@ class AutoNav(Node):
                     # self.get_logger().info('Distances left angles: %s' % str(lrleft))
 
                     # if the list is not empty
-                    if current_lrleft > 0.25:
+                    # if current_lrleft > 0.25:
+                    if len(lrleft[0]) > 0:
                         self.stopbot()
                         self.turn_left()
                         # self.pick_direction()
