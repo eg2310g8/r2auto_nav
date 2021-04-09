@@ -20,6 +20,10 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 from .astar import Astar
+import pathfinding
+from pathfinding.core.diagonal_movement import DiagonalMovement
+from pathfinding.core.grid import Grid
+from pathfinding.finder.a_star import AStarFinder
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -35,9 +39,11 @@ from contextlib import suppress
 rotatechange = 0.5
 speedchange = 0.1
 occ_bins = [-1, 0, 55, 100]
-stop_distance = 0.25
-front_angle = 30
+stop_distance = 0.30
+front_angle = 45
 front_angles = range(-front_angle, front_angle+1, 1)
+check_angle = 90
+check_angles = range(-check_angle, check_angle+1, 1)
 scanfile = 'lidar.txt'
 mapfile = 'mapnew.txt'
 map_bg_color = 1
@@ -71,26 +77,73 @@ def euler_from_quaternion(x, y, z, w):
 def getListOfPath(currMap, start, end):
     mat = []
     innerMat = []
-
-    for i in currMap:
-        for j in i:
-            if j == 1:
-                # this means that this is unexplored
-                innerMat.append(0)
-            elif j == 2 or j == 0:
-                # this means this is explored & unoccupied
-                innerMat.append(0)
-            elif j == 3:
-                # this means this is an obstacle
-                innerMat.append(None)
-        mat.append(innerMat)
-        innerMat = []
+    with suppress(IndexError):
+        for i in currMap:
+            for j in i:
+                if j == 1:
+                    # this means that this is unexplored
+                    innerMat.append(0)
+                elif j == 2 or j == 0 or j == 4:
+                    # this means this is explored & unoccupied
+                    innerMat.append(0)
+                elif j == 3:
+                    # this means this is an obstacle
+                    innerMat.append(None)
+            mat.append(innerMat)
+            innerMat = []
 
     astar = Astar(mat)
     result = astar.run(start, end)
     print(result)
     return result
 
+def PyPiPathFinding(currMap,start,end):
+    matrix = []
+    innerMat = []
+
+    for i in currMap:
+        for j in i:
+            if j == 1:
+                # this means that this is unexplored
+                innerMat.append(2)
+            elif j == 2 or j == 0 or j == 4:
+                # this means this is explored & unoccupied
+                innerMat.append(1)
+            elif j == 3:
+                # this means this is an obstacle
+                innerMat.append(0)
+        matrix.append(innerMat)
+        innerMat = []
+
+    grid = Grid(matrix=matrix)
+    start = grid.node(start[0],start[1])
+    end = grid.node(end[0],end[1])
+    finder = AStarFinder(diagonal_movement=DiagonalMovement.never)
+    path, runs = finder.find_path(start,end,grid)
+    print('operations:', runs, 'path length:', len(path))
+    print(grid.grid_str(path=path, start=start, end=end))
+
+    return path
+
+# function to norm vectors
+def unit_vector(vector):
+    """ Returns the unit vector of the vector.  """
+    return vector / np.linalg.norm(vector)
+
+# function to find angle btw two vectors
+def angle_between(v1, v2):
+    """ Returns the angle in radians between vectors 'v1' and 'v2'::
+
+            >>> angle_between((1, 0, 0), (0, 1, 0))
+            1.5707963267948966
+            >>> angle_between((1, 0, 0), (1, 0, 0))
+            0.0
+            >>> angle_between((1, 0, 0), (-1, 0, 0))
+            3.141592653589793
+    """
+    v1_u = unit_vector(v1)
+    v2_u = unit_vector(v2)
+    return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
 class AutoNav(Node):
 
@@ -257,8 +310,8 @@ class AutoNav(Node):
         # print(correct_coordinates)
 
         def get_distance(place):
-            print(place)
-            print(grid_x,grid_y)
+            # print(place)
+            # print(grid_x,grid_y)
             res = (place[1]-grid_x)**2 + (place[0]-grid_y)**2
             return res
 
@@ -275,6 +328,9 @@ class AutoNav(Node):
         print("Get the correct goal coordinate")
         goal_x, goal_y = correct_coordinates[goal_index]
         # self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
+
+        self.unrotatedstart = (grid_y,grid_x)
+        self.unrotatedgoal = (goal_x,goal_y)
 
         print("set start location to 0 on original map")
         # set current robot location to 0
@@ -310,8 +366,11 @@ class AutoNav(Node):
         print("Rotate the array as necessary")
         # rotate by 90 degrees so that the forward direction is at the top of the image
         rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
-        rotated_array = np.copy(np.asarray(rotated))
+        rotated_array = np.asarray(rotated)
         self.occdata = rotated_array
+        self.unrotatedoccdata = np.asarray(img_transformed)
+        self.unrotatedmsginfo = msg
+        print(self.occdata)
         
         print("Find where start is on new map")
         start = np.where(rotated_array == 0)
@@ -420,50 +479,54 @@ class AutoNav(Node):
             end = self.end
             occdata = self.occdata
             
-            path = getListOfPath(np.ndarray.tolist(occdata),start,end)
-            print(path)
-            end = path[5]
+            self.get_logger().info("Getting List of Paths")
+            path_gotten = False
+            while len(self.occd):
+                try:
+                    path = PyPiPathFinding(np.ndarray.tolist(occdata),start,end)
+                    print(path)
+                    print("Path gotten is now True")
+                    path_gotten = True
+                except Exception:
+                    self.rotatebot(0)
+                finally:
+                    self.rotatebot(0)
+            self.get_logger().info("Getting index 5 from List of Paths")
         
-        # function to norm vectors
-        def unit_vector(vector):
-            """ Returns the unit vector of the vector.  """
-            return vector / np.linalg.norm(vector)
+            self.get_logger().info("Trying to move to the correct path")
+            for index in range(5,len(path),5):
+                start = previous
+                end = path[index]
+                
+                print("find direction to go in")
+                # find angle between direction vector and current direction
+                direction_vector = (end[0]-start[0], end[1]-start[1])
+                angle_i_want = angle_between((1, 0), direction_vector) 
+                angle_i_want = np.degrees(angle_i_want) // 1
+                self.angle_i_want = angle_i_want 
 
-        # function to find angle btw two vectors
-        def angle_between(v1, v2):
-            """ Returns the angle in radians between vectors 'v1' and 'v2'::
+                print("angle_i_want")
+                # print out next desired angle
+                print(angle_i_want)
 
-                    >>> angle_between((1, 0, 0), (0, 1, 0))
-                    1.5707963267948966
-                    >>> angle_between((1, 0, 0), (1, 0, 0))
-                    0.0
-                    >>> angle_between((1, 0, 0), (-1, 0, 0))
-                    3.141592653589793
-            """
-            v1_u = unit_vector(v1)
-            v2_u = unit_vector(v2)
-            return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+                # find the time i should travel
+                local_dist = (((end[1]-start[1])**2 + (end[1]-start[1])**2)**0.5)*0.5
+                time_to_take = local_dist / speedchange
 
-        print("find direction to go in")
-        # find angle between direction vector and current direction
-        direction_vector = (end[0]-start[0], end[1]-start[1])
-        angle_i_want = angle_between((1, 0), direction_vector)
-        angle_i_want = np.degrees(angle_i_want) // 1
-        self.angle_i_want = angle_i_want
+                self.rotatebot(angle_i_want)
+                # start moving
+                twist = Twist()
+                twist.linear.x = speedchange
+                twist.angular.z = 0.0
+                # not sure if this is really necessary, but things seem to work more
+                # reliably with this
+                time.sleep(1)
+                self.publisher_.publish(twist)
+                print(time_to_take)
+                time.sleep(time_to_take)
+                self.stopbot()
+                end = previous
 
-        print("angle_i_want")
-        # print out next desired angle
-        print(angle_i_want)
-
-        self.rotatebot(angle_i_want)
-        # start moving
-        twist = Twist()
-        twist.linear.x = speedchange
-        twist.angular.z = 0.0
-        # not sure if this is really necessary, but things seem to work more
-        # reliably with this
-        time.sleep(1)
-        self.publisher_.publish(twist)
     
     def avoid_obstacle(self):
         angle_found = False
@@ -475,9 +538,8 @@ class AutoNav(Node):
                 # self.get_logger().info('In pick_direction')
                 if self.laser_range.size != 0:
                     # use nanargmax as there are nan's in laser_range added to replace 0's
-                    lr2i = np.nanargmax(self.laser_range[front_angles])
-                    self.get_logger().info('Picked direction: %d %f m' %
-                                        (lr2i, self.laser_range[lr2i]))
+                    lr2i = np.nanargmax(self.laser_range)
+                    self.get_logger().info('Picked direction to avoid obstacle: %d %f m' % (lr2i, self.laser_range[lr2i]))
                     angle_found = True
                 else:
                     lr2i = 0
@@ -487,15 +549,17 @@ class AutoNav(Node):
             self.get_logger().info('Obstacle being avoided!')
 
         # rotate to that direction
-        self.get_logger().info("Doing initial rotation")
+        self.get_logger().info("Doing rotation to avoid obstacle")
         self.rotatebot(float(lr2i))
         twist = Twist()
         twist.linear.x = speedchange
         twist.angular.z = 0.0
         time.sleep(1)
         self.publisher_.publish(twist)
+        self.get_logger().info("Moving to avoid obstacle")
         time.sleep(2)
-        self.pick_direction(1)
+        self.get_logger().info("Now picking direction")
+        self.pick_direction(2)
         
         
 
@@ -547,7 +611,7 @@ class AutoNav(Node):
                         # find direction with the largest distance from the Lidar
                         # rotate to that direction
                         # start moving
-                        self.avoid_obstacle()
+                        self.pick_direction(2)
                 # allow the callback functions to run
                 rclpy.spin_once(self)
 
@@ -558,6 +622,8 @@ class AutoNav(Node):
         finally:
             # stop moving
             self.stopbot()
+
+       
 
 
 def main(args=None):

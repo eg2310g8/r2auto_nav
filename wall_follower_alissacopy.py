@@ -27,11 +27,11 @@ import time
 
 # constants
 rotatechange = 0.5
-speedchange = 0.5
+speedchange = 0.10
 occ_bins = [-1, 0, 100, 101]
-stop_distance = 0.25
+stop_distance = 0.40
 front_angle = 30
-ninety_degrees_left_side_angles = range(75, 105 + 1, 1)
+ninety_degrees_left_side_angles = range(85, 95 + 1, 1)
 ninety_degrees_right_side_angles = range(255, 285 + 1, 1)
 front_angles = range(-front_angle, front_angle + 1, 1)
 back_angles = range(150, 210 + 1, 1)
@@ -199,12 +199,30 @@ class AutoNav(Node):
 
     def pick_direction(self):
 
-        lri = (self.laser_range[front_angles]
-               < float(stop_distance)).nonzero()
-        # self.get_logger().info('Distances: %s' % str(lri))
-        ninety_degree_left = self.laser_range[90]
-        lrright = (self.laser_range[ninety_degrees_right_side_angles] < float(
-            stop_distance)).nonzero()
+        lrfront = (self.laser_range[front_angles] < float(stop_distance)).nonzero()
+        lrleft = self.laser_range[90]
+        lrright = (self.laser_range[ninety_degrees_right_side_angles] < float(stop_distance)).nonzero()
+        # self.get_logger().info('Distances: %s' % str(lrfront))
+
+        while (len(lrfront[0]) > 0):
+            print("Spin spin until front of the bot is free")
+            self.rotatebot(-10)
+            self.stopbot()
+            rclpy.spin_once(self)
+            time.sleep(1)
+            lrfront = (self.laser_range[front_angles] < float(
+                stop_distance)).nonzero()
+            self.get_logger().info('Distances front angles: %s' % str(lrfront))
+
+        # start moving
+        self.get_logger().info('Start moving')
+        twist = Twist()
+        twist.linear.x = speedchange
+        twist.angular.z = 0.0
+        # not sure if this is really necessary, but things seem to work more
+        # reliably with this
+        time.sleep(1)
+        self.publisher_.publish(twist)
 
         # while (len(lrleft[0]) <= 0 or len(lrright[0]) <= 0):
         #     print("Spin spin until aligned to the left of the bot")
@@ -222,16 +240,37 @@ class AutoNav(Node):
         #     ninety_degree_left = self.laser_range[90]
         #     time.sleep(1)
 
-        while (len(lri[0]) > 0):
-            print("Spin spin until front of the bot is free")
-            self.rotatebot(-10)
-            self.stopbot()
-            rclpy.spin_once(self)
-            time.sleep(1)
-            lri = (self.laser_range[front_angles] < float(
-                stop_distance)).nonzero()
-            self.get_logger().info('Distances front angles: %s' % str(lri))
+    def turn_left(self):
+        self.rotatebot(30)
+        twist = Twist()
+        twist.linear.x = speedchange
+        twist.angular.z = 0.0
+        self.publisher_.publish(twist)
+        time.sleep(1)
+        self.stopbot()
+        self.rotatebot(30)
+        self.publisher_.publish(twist)
+        
+        #get the current time
+        now = time.time()
 
+        while not time.time() - now > 2: 
+            rclpy.spin_once(self)
+            lrfront = (self.laser_range[front_angles]
+                < float(0.3)).nonzero()
+            # self.get_logger().info('Distances: %s' % str(lrfront))
+
+            if (len(lrfront[0]) > 0):
+                self.stopbot()
+                print("Spin spin until front of the bot is free")
+                self.rotatebot(-10)
+                self.stopbot()
+                rclpy.spin_once(self)
+                time.sleep(1)
+                lrfront = (self.laser_range[front_angles] < float(
+                    0.3)).nonzero()
+                self.get_logger().info('Distances front angles: %s' % str(lrfront))
+        
         # start moving
         self.get_logger().info('Start moving')
         twist = Twist()
@@ -241,18 +280,20 @@ class AutoNav(Node):
         # reliably with this
         time.sleep(1)
         self.publisher_.publish(twist)
+        
 
-    def turn_left(self):
-        lrleft = (self.laser_range[ninety_degrees_left_side_angles] < float(
+
+        '''
+        lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
             0.4)).nonzero()
         # ninety_degree_left = self.laser_range[90]
         # while (ninety_degree_left > 0.25):
-        while len(lrleft[0]) <= 0:
+        while len(lrleft[0]) > 0:
             print("Spin until aligned to the left")
             self.rotatebot(10)
             self.stopbot()
             rclpy.spin_once(self)
-            lrleft = (self.laser_range[ninety_degrees_left_side_angles] < float(
+            lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
                 0.4)).nonzero()
             # ninety_degree_left = self.laser_range[90]
             time.sleep(1)
@@ -264,6 +305,7 @@ class AutoNav(Node):
         # reliably with this
         time.sleep(1)
         self.publisher_.publish(twist)
+        '''
 
     def stopbot(self):
         self.get_logger().info('In stopbot')
@@ -390,14 +432,15 @@ class AutoNav(Node):
 
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
-                    lri = (self.laser_range[front_angles]
+                    lrfront = (self.laser_range[front_angles]
                            < float(stop_distance)).nonzero()
+                    lrfrontleft = (self.laser_range[45] < float(stop_distance)).nonzero()
                     lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
                         stop_distance)).nonzero()
                     # current_lrleft = np.sum(
                     # self.laser_range[ninety_degrees_left_side_angles])
                     current_lrleft = self.laser_range[90]
-                    self.get_logger().info('Distances front angles: %s' % str(lri))
+                    self.get_logger().info('Distances front angles: %s' % str(lrfront))
                     print(current_lrleft)
                     # self.get_logger().info('Distances left angles: %s' % str(lrleft))
 
@@ -405,10 +448,11 @@ class AutoNav(Node):
                     # if current_lrleft > 0.25:
                     if len(lrleft[0]) > 0:
                         self.stopbot()
+                        self.get_logger().info("Now turning left")
                         self.turn_left()
                         # self.pick_direction()
 
-                    elif (len(lri[0]) > 0):
+                    elif (len(lrfront[0]) > 0):
                         # stop moving
                         self.stopbot()
                         # find direction with the largest distance from the Lidar

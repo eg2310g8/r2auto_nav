@@ -100,7 +100,7 @@ def getListOfPath(currMap, start, end):
 
     astar = Astar(mat)
     result = astar.run(start, end)
-    print(result)
+    # print(result)
     return result
 
 
@@ -270,7 +270,27 @@ class AutoNav(Node):
                 correcter_coordinates.append(coord)
 
         correct_coordinates = correcter_coordinates
+        '''
+        def check_if_reachable(place):
+            a = place[0]
+            b = place[1]
+            if getListOfPath(odata,(grid_x,grid_y),(a,b)) == None:
+                print("False")
+                return False
 
+            else:
+                print("True")
+                return True
+        
+        correcter_coordinates = []
+        
+        for coord in correct_coordinates:
+            if check_if_reachable(coord) == True:
+                correcter_coordinates.append(coord)
+        
+        correct_coordinates = correcter_coordinates
+        # print(correct_coordinates)
+        '''
         def get_distance(place):
             res = (place[1]-grid_x)**2 + (place[0]-grid_y)**2
             return res
@@ -306,11 +326,13 @@ class AutoNav(Node):
                     odata[goal_x+i, goal_y+j] = 4
 
         # to see all possible goals, uncomment
+        '''
         for i in range(-1, 1):
             for j in range(-1, 1):
                 for goals in correct_coordinates:
                     with suppress(IndexError):
                         odata[goals[0]+i, goals[1]+j] = 4
+                        '''
 
         # print("Transfer original array to image with shifting")
         # print("Goal edits done")
@@ -455,7 +477,7 @@ class AutoNav(Node):
             v1_u = unit_vector(v1)
             v2_u = unit_vector(v2)
             return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
-        print(list_of_goals)
+
         print("Calculated minimum distance to goal in metres")
         calculated_distance_to_goal = math.sqrt(
             ((self.endpoint[0] - self.startpoint[0]) * 0.05)**2 + ((self.endpoint[1] - self.startpoint[1]) * 0.05)**2)
@@ -463,22 +485,31 @@ class AutoNav(Node):
 
         print("Find goal direction to go in")
         # find angle between direction vector and current direction
-        # direction_vector = (
-        # self.endpoint[0]-self.startpoint[0], self.endpoint[1]-self.startpoint[1])
+        # direction_vector_end_point_to_start_point = (self.endpoint[0]-self.startpoint[0], self.endpoint[1]-self.startpoint[1])
         direction_vector = (
-            self.startpoint[0]-self.endpoint[0], self.startpoint[1]-self.endpoint[1])
-        angle_i_want_in_radians = angle_between((0, 1), direction_vector)
+            self.endpoint[0]-self.startpoint[0], self.endpoint[1]-self.startpoint[1])
+        angle_i_want_in_radians = angle_between((1, 0), direction_vector)
+
+        angle_i_want = np.degrees(angle_i_want_in_radians)
+
+        '''
+        # Quadrant 1
+        if self.endpoint[0] - self.startpoint[0] > 0 and self.endpoint[1] - self.startpoint[1] > 0:
+            print("I'm in first Quadrant, turn right")
+            angle_i_want = -1 * np.degrees(angle_between((0, 1), direction_vector_end_point_to_start_point))
+        
         if self.startpoint[0] - self.endpoint[0] > 0:
             # If goal point is to the right, rotate right
             angle_i_want = -1 * np.degrees(angle_i_want_in_radians)
+
         else:
             # If goal point is to the left, rotate left
             # If straight/backward then rotate accordingly
             angle_i_want = np.degrees(angle_i_want_in_radians)
-
+        '''
         print("Angle_i_want")
         # print out next desired angle
-        print(angle_i_want)
+        print(round(angle_i_want))
         breakNow = False
         for i in range(0, 361, 1):
             print("Spin-spin spinnnnn ~~~")
@@ -486,6 +517,7 @@ class AutoNav(Node):
                 break
             self.rotatebot(1)
             self.stopbot()
+            rclpy.spin_once(self)
             for j in list_of_goals:
                 print("Calculated minimum distance to goal in metres")
                 calculated_distance_to_goal = math.sqrt(
@@ -496,17 +528,18 @@ class AutoNav(Node):
                     break
             rclpy.spin_once(self)
 
-        # while abs(self.startpoint[0] - self.endpoint[0]) <= (math.pi/12 * calculated_distance_to_goal) or self.endpoint[1] >= self.startpoint[1]:
+        # while abs(self.startpoint[0] - self.endpoint[0]) <= (math.pi/6 * calculated_distance_to_goal) or self.endpoint[1] >= self.startpoint[1]:
         #     print("Spin spin until aligned in the 0 degrees...will it ever terminate?")
         #     self.rotatebot(1)
         #     self.stopbot()
         #     rclpy.spin_once(self)
         rclpy.spin_once(self)
-        print("It terminated!")
+        # print("It terminated!")
         last_zero_degree_distance = calculated_distance_to_goal
         print("Rotating the bot towards the goal")
         # time.sleep(15)
-        # self.rotatebot(angle_i_want)
+        # self.rotatebot(round(angle_i_want))
+        print("Rotation Finished")
         self.stopbot()
         # time.sleep(15)
         # offset_in_degrees = int(round(np.degrees(
@@ -601,7 +634,7 @@ class AutoNav(Node):
                 turn_right = True
                 going_straight = False
                 offset_in_degrees = np.degrees(
-                    0.8 / self.laser_range[right_degree_turn])
+                    0.4 / self.laser_range[right_degree_turn])
                 print("Going Right in Pick Direction")
                 print(float(right_degree_turn - offset_in_degrees))
                 self.rotatebot(float(right_degree_turn - offset_in_degrees))
@@ -610,7 +643,7 @@ class AutoNav(Node):
                 turn_right = False
                 going_straight = False
                 offset_in_degrees = np.degrees(
-                    0.8 / self.laser_range[left_degree_turn])
+                    0.4 / self.laser_range[left_degree_turn])
                 print("Going Left in Pick Direction")
                 print(float(left_degree_turn - offset_in_degrees))
                 self.rotatebot(float(left_degree_turn + offset_in_degrees))
