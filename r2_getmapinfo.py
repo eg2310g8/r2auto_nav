@@ -15,12 +15,11 @@
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, Pose
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
-from std_msgs.msg import String
-from .astar import Astar
+from std_msgs.msg import String, Float64MultiArray
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -61,29 +60,6 @@ def euler_from_quaternion(x, y, z, w):
 
     return roll_x, pitch_y, yaw_z  # in radians
 
-def getListOfPath(currMap, start, end):
-    mat = []
-    innerMat = []
-
-    for i in currMap:
-        for j in i:
-            if j == 1:
-                # this means that this is unexplored
-                innerMat.append(0)
-            elif j == 2 or j == 0:
-                # this means this is explored & unoccupied
-                innerMat.append(0)
-            elif j == 3:
-                # this means this is an obstacle
-                innerMat.append(None)
-        mat.append(innerMat)
-        innerMat = []
-
-    astar = Astar(mat)
-    result = astar.run(start, end)
-    # print(result)
-    return result
-
 
 class Mapping(Node):
 
@@ -91,8 +67,21 @@ class Mapping(Node):
         super().__init__('mapping')
 
         # create publisher for moving TurtleBot
-        self.publisher_ = self.create_publisher(String, 'rotated_array', qos_profile_sensor_data)
+        self.publisher_ = self.create_publisher(
+            Pose,
+            '/goal',
+            10)
         # self.get_logger().info('Created publisher')
+
+        # Call the callback functions every 5 seconds
+        timer_period = 5
+        self.timer1 = self.create_timer(timer_period, self.give_goal_values)
+
+        """ self.goal_requests = self.create_subscription(
+            String,
+            'goal_request',
+            self.give_goal_values,
+            10) """
 
         # create subscription to track orientation
         self.odom_subscription = self.create_subscription(
@@ -123,8 +112,23 @@ class Mapping(Node):
         self.tfBuffer = tf2_ros.Buffer()
         self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
 
+        self.est_state_subscription = self.create_subscription(
+            Float64MultiArray,
+            '/state_est',
+            self.state_estimate_callback,
+            10)
+        self.current_x = 0.0
+        self.current_y = 0.0
+        self.current_yaw = 0.0
+        self.goal_x_coordinates = False
+        self.goal_y_coordinates = False
+        
+
     def odom_callback(self, msg):
         # self.get_logger().info('In odom_callback')
+        position = msg.pose.pose.position
+        # self.get_logger().info("%s" % str(position))
+
         orientation_quat = msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(
             orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
@@ -132,7 +136,7 @@ class Mapping(Node):
     def occ_callback(self, msg):
         self.get_logger().info('In occ_callback')
         # create numpy array
-        print("Doing Set Up")
+        #print("Doing Set Up")
         msgdata = np.array(msg.data)
         # compute histogram to identify percent of bins with -1, values btw 1 and below 50
         # btw 50 and `100.
@@ -173,7 +177,7 @@ class Mapping(Node):
         iwidth = msg.info.width
         iheight = msg.info.height
 
-        print("Find Start Location on Original Map")
+        #print("Find Start Location on Original Map")
         # get map grid positions for x,y position
         grid_x = round((cur_pos.x - map_origin.x) / map_res)
         grid_y = round((cur_pos.y - map_origin.y) / map_res)
@@ -183,8 +187,13 @@ class Mapping(Node):
         # convert into 2D array using column order
         odata = np.uint8(binnum.reshape(msg.info.height, msg.info.width))
 
-        print("Finding the Goal Location")
-        print("Finding All Explored Points")
+        #print("Finding the Wall Locations on Original Map")
+        # for all the occupied points(=3), make the closest woah=1 cell(s) black also
+        result_wall = np.where(odata == 3)
+        coordinates_wall = list(zip(result_wall[0], result_wall[1]))
+
+        #print("Finding the Goal Location")
+        #print("Finding All Explored Points")
         # find goal location
         result_explored = np.where(odata == 2)
         coordinates_explored = list(
@@ -206,7 +215,7 @@ class Mapping(Node):
 
         correct_coordinates = []
         
-        print("Checking if Unexplored Points are next to Explored Points")
+        #print("Checking if Unexplored Points are next to Explored Points")
         for coord in coordinates_explored:
             if check_if_neighbour_unexplored(coord) == True:
                 correct_coordinates.append(coord)
@@ -226,7 +235,7 @@ class Mapping(Node):
 
         correcter_coordinates = []
 
-        print("Checking if Explored-Unexplored Points are next to Walls")
+        #print("Checking if Explored-Unexplored Points are next to Walls")
         for coord in correct_coordinates:
             if check_if_neighbour_wall(coord) == False:
                 correcter_coordinates.append(coord)
@@ -236,69 +245,94 @@ class Mapping(Node):
         # print(correct_coordinates)
 
         def get_distance(place):
-            return (place[0]-grid_x)**2 + (place[1]-grid_y)**2
+            # print(place)
+            # print(grid_x,grid_y)
+            res = (place[1]-grid_x)**2 + (place[0]-grid_y)**2
+            return res
 
-        print("Find distances between start point and goal coordinates")
+        #print("Find distances between start point and goal coordinates")
         distances_between = list(map(get_distance, correct_coordinates))
         # print(distances_between)
-        print("Finding Min distance between start point and goal points")
-        max_dist = np.amax(distances_between)
-        print("Find the index of the goal coordinate with min dist")
-        goals = np.where(distances_between == max_dist)
+        #print("Finding min distance between start point and goal points")
+        min_dist = min(distances_between)
+        #print("Find the index of the goal coordinate with min dist")
+        goals = np.where(distances_between == min_dist)
         # print(goals)
         goal_index = goals[0][0]
         # print(goal_index)
-        print("Get the correct goal coordinate")
+        #print("Get the correct goal coordinate")
         goal_x, goal_y = correct_coordinates[goal_index]
         # self.get_logger().info('Goal_X: %i Goal_Y: %i' % (goal_x, goal_y))
 
-        print("set start location to 0 on original map")
+        self.unrotatedstart = (grid_y,grid_x)
+        self.unrotatedgoal = (goal_x,goal_y)
+
+        #self.get_logger().info("Start is %s" % (str(self.unrotatedstart)))
+        #self.get_logger().info("Goal is %s" % (str(self.unrotatedgoal)))
+
+        #print("set start location to 0 on original map")
         # set current robot location to 0
-        print(grid_y,grid_x)
-        for i in range(-1, 1):
-                for j in range(-1, 1):
+        #print(grid_y,grid_x)
+        for i in range(-2, 2):
+                for j in range(-2, 2):
                     with suppress(IndexError):
                         odata[grid_y+i, grid_x+j] = 0
 
-        print("set goal location to 4 on original map")
+        #print("set goal location to 4 on original map")
         # set goal location to 4
         for i in range(-1, 1):
                 for j in range(-1, 1):
                     with suppress(IndexError):
                         odata[goal_x+i, goal_y+j] = 4
+        '''
+        # to see all possible goals, uncomment
+        
+        for i in range(-1, 1):
+                for j in range(-1, 1):
+                    for goals in correct_coordinates:
+                        with suppress(IndexError):
+                            odata[goals[0]+i, goals[1]+j] = 4
+        '''
+        
 
-        print("transfer original array to image with shifting")
+        #print("transfer original array to image with shifting")
         # print("Goal edits done")
         # create image from 2D array using PIL
         img = Image.fromarray(odata)
         img_transformed = Image.new(img.mode, (iwidth,iheight), map_bg_color)
         img_transformed.paste(img, (0,0))
 
-        print("Rotate the array as necessary")
+        #print("Rotate the array as necessary")
         # rotate by 90 degrees so that the forward direction is at the top of the image
         rotated = img_transformed.rotate(np.degrees(yaw)-90, expand=True, fillcolor=map_bg_color)
-        rotated_array = np.copy(np.asarray(rotated))
+        rotated_array = np.asarray(rotated)
+        self.occdata = rotated_array
+        self.unrotatedoccdata = np.asarray(img_transformed)
+        self.unrotatedmsginfo = msg
+        print(self.occdata)
         
-        print("Find where start is on new map")
+        #print("Find where start is on new map")
         start = np.where(rotated_array == 0)
-        print("start is", start)
+        #print("start is", start)
         start = list(zip(start[0], start[1]))
         start = start[0]
-        print(start)
+        #print(start)
+        self.start = start
 
-        print("Find where end is on new map")
+        #print("Find where end is on new map")
         end = np.where(rotated_array == 4)
-        print("end is", end)
+        #print("end is", end)
         end = list(zip(end[0], end[1]))
         end = end[0]
-        print(end)
+        #print(end)
+        self.end = end
 
         # notify start and end locations
-        self.get_logger().info('Start X: %i Start Y: %i' % (start[0], start[1]))
-        self.get_logger().info('Goal X: %i Goal Y: %i' % (end[0], end[1]))
+        self.get_logger().info('Start Y: %i Start X: %i' %
+                               (start[1], start[0]))
+        self.get_logger().info('Goal Y: %i Goal X: %i' % (end[1], end[0]))
+
         
-        path = getListOfPath(rotated_array,start,end)
-        print(path)
         # create image from 2D array using PIL
         # rotated = Image.fromarray(rotated)
         # show the image using grayscale map
@@ -308,10 +342,54 @@ class Mapping(Node):
         plt.draw_all()
         # pause to make sure the plot gets created
         plt.pause(0.00000000001)
-        
-        self.occdata = np.array([])
-    
+        '''
+        # create image from 2D array using PIL
+        odataimg = Image.fromarray(odata)
+        # show the image using grayscale map
+        #plt.imshow(img, cmap='gray', origin='lower')
+        #plt.imshow(img_transformed, cmap='gray', origin='lower')
+        plt.imshow(odataimg, cmap='gray', origin='lower')
+        plt.draw_all()
+        # pause to make sure the plot gets created
+        plt.pause(0.00000000001)
+        '''
 
+
+    def state_estimate_callback(self,msg):
+        """
+        Extract the position and orientation data. 
+        This callback is called each time
+        a new message is received on the '/en613/state_est' topic
+        """
+        # Update the current estimated state in the global reference frame
+        curr_state = msg.data
+        self.current_x = curr_state[0]
+        self.current_y = curr_state[1]
+        self.current_yaw = curr_state[2]
+
+        # Print the pose of the robot
+        # Used for testing
+        """ self.get_logger().info('X:%f Y:%f YAW:%f' % (
+        self.current_x,
+        self.current_y,
+        np.rad2deg(self.current_yaw)))  # Goes from -pi to pi  """
+    
+    def give_goal_values(self):
+        pose = Pose()
+
+        diff_x = self.end[1] - self.start[1]
+        diff_y = self.end[0] - self.start[0]
+        diff_x *= 0.5
+        diff_y *= 0.5
+
+        pose.position.x = self.current_x
+        pose.position.y = self.current_y
+
+        pose.position.x -= diff_x
+        pose.position.y -= diff_y
+
+        self.publisher_.publish(pose)
+        self.get_logger().info("Goal Published!")
         
 
 

@@ -19,6 +19,7 @@ from geometry_msgs.msg import Twist
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
+from std_msgs.msg import Float64MultiArray
 import numpy as np
 import cv2
 import math
@@ -79,6 +80,30 @@ class AutoNav(Node):
         self.publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
         # self.get_logger().info('Created publisher')
 
+        # Create a subscriber
+        # Node subscribes to messages from the targeting node
+        self.targeting_subscription = self.create_subscription(
+            String,
+            'targeting_status',
+            self.target_callback,
+            10)
+        self.targeting_subscription # prevent unused variable warning
+
+        # Create a subscriber
+        # This node subscribes to messages of type Float64MultiArray  
+        # over a topic named: /en613/state_est
+        # The message represents the current estimated state:
+        #   [x, y, yaw]
+        # The callback function is called as soon as a message 
+        # is received.
+        # The maximum number of queued messages is 10.
+        self.subscription = self.create_subscription(
+            Float64MultiArray,
+            '/state_est',
+            self.state_estimate_callback,
+            10)
+        self.subscription  # prevent unused variable warning
+
         # create subscription to track orientation
         self.odom_subscription = self.create_subscription(
             Odometry,
@@ -109,12 +134,49 @@ class AutoNav(Node):
             qos_profile_sensor_data)
         self.scan_subscription  # prevent unused variable warning
         self.laser_range = np.array([])
+    
+    def state_estimate_callback(self, msg):
+        """
+        Extract the position and orientation data. 
+        This callback is called each time
+        a new message is received on the '/en613/state_est' topic
+        """
+        # Update the current estimated state in the global reference frame
+        curr_state = msg.data
+        self.current_x = curr_state[0]
+        self.current_y = curr_state[1]
+        self.current_yaw = curr_state[2]
+         
+        # Wait until we have received some goal destinations.
+        """ if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
+            return """
+                 
+        # Print the pose of the robot
+        # Used for testing
+        self.get_logger().info('X:%f Y:%f YAW:%f' % (
+        self.current_x,
+        self.current_y,
+        np.rad2deg(self.current_yaw)))  # Goes from -pi to pi 
+         
+        """  # See if the Bug2 algorithm is activated. If yes, call bug2()
+        if self.bug2_switch == "ON":
+            self.bug2()
+        else:
+             
+            if self.robot_mode == "go to goal mode":
+                self.go_to_goal()
+            elif self.robot_mode == "wall following mode":
+                self.follow_wall()
+            else:
+                pass # Do nothing
+        """
 
     def odom_callback(self, msg):
         # self.get_logger().info('In odom_callback')
         orientation_quat = msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(
             orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
+
 
     def occ_callback(self, msg):
         global occdata
@@ -283,72 +345,6 @@ class AutoNav(Node):
         # Send velocity command to the robot
         self.publisher_.publish(msg)    
 
-    # def turn_left(self):
-    #     self.rotatebot(30)
-    #     twist = Twist()
-    #     twist.linear.x = speedchange
-    #     twist.angular.z = 0.0
-    #     self.publisher_.publish(twist)
-    #     time.sleep(1)
-    #     self.stopbot()
-    #     self.rotatebot(30)
-    #     self.publisher_.publish(twist)
-        
-    #     #get the current time
-    #     now = time.time()
-
-    #     while not time.time() - now > 2: 
-    #         rclpy.spin_once(self)
-    #         lrfront = (self.laser_range[front_angles]
-    #             < float(0.3)).nonzero()
-    #         # self.get_logger().info('Distances: %s' % str(lrfront))
-
-    #         if (len(lrfront[0]) > 0):
-    #             self.stopbot()
-    #             print("Spin spin until front of the bot is free")
-    #             self.rotatebot(-10)
-    #             self.stopbot()
-    #             rclpy.spin_once(self)
-    #             time.sleep(1)
-    #             lrfront = (self.laser_range[front_angles] < float(
-    #                 0.3)).nonzero()
-    #             self.get_logger().info('Distances front angles: %s' % str(lrfront))
-        
-    #     # start moving
-    #     self.get_logger().info('Start moving')
-    #     twist = Twist()
-    #     twist.linear.x = speedchange
-    #     twist.angular.z = 0.0
-    #     # not sure if this is really necessary, but things seem to work more
-    #     # reliably with this
-    #     time.sleep(1)
-    #     self.publisher_.publish(twist)
-        
-
-
-        '''
-        lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
-            0.4)).nonzero()
-        # ninety_degree_left = self.laser_range[90]
-        # while (ninety_degree_left > 0.25):
-        while len(lrleft[0]) > 0:
-            print("Spin until aligned to the left")
-            self.rotatebot(10)
-            self.stopbot()
-            rclpy.spin_once(self)
-            lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
-                0.4)).nonzero()
-            # ninety_degree_left = self.laser_range[90]
-            time.sleep(1)
-        self.get_logger().info('Start moving left')
-        twist = Twist()
-        twist.linear.x = speedchange
-        twist.angular.z = 0.0
-        # not sure if this is really necessary, but things seem to work more
-        # reliably with this
-        time.sleep(1)
-        self.publisher_.publish(twist)
-        '''
 
     def stopbot(self):
         self.get_logger().info('In stopbot')

@@ -34,6 +34,10 @@ setup(
             'autonav = auto_nav.r2auto_navtrial_original_alissacopy:main',
             'wallfollower = auto_nav.wall_follower:main',
             'mywall = auto_nav.wall_follower_alissacopy:main',
+            'posing = auto_nav.pose_estimator:main',
+            'bugging = auto_nav.bugging:main',
+            'goalie = auto_nav.goal_giver:main',
+            'targeting = auto_nav.r2_targeting:main',
         ],
     },
 )
