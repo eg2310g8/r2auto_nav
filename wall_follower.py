@@ -19,8 +19,11 @@ from geometry_msgs.msg import Twist
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
-from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Float64MultiArray, String
 import numpy as np
+import matplotlib.pyplot as plt
+import tf2_ros
+from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 import cv2
 import math
 import cmath
@@ -41,7 +44,7 @@ frontright_angles = range(310, 320+1, 1)
 
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
-occdata = np.array([])
+myoccdata = np.array([])
 current_lrleft = 0
 previous_lrleft = 0
 isTargetDetected = False
@@ -136,10 +139,11 @@ class AutoNav(Node):
             qos_profile_sensor_data)
         self.scan_subscription  # prevent unused variable warning
         self.laser_range = np.array([])
+        self.tfBuffer = tf2_ros.Buffer()
 
     def state_estimate_callback(self, msg):
         """
-        Extract the position and orientation data. 
+        Extract the position and orientation data.
         This callback is called each time
         a new message is received on the '/en613/state_est' topic
         """
@@ -164,7 +168,7 @@ class AutoNav(Node):
         if self.bug2_switch == "ON":
             self.bug2()
         else:
-             
+
             if self.robot_mode == "go to goal mode":
                 self.go_to_goal()
             elif self.robot_mode == "wall following mode":
@@ -196,7 +200,7 @@ class AutoNav(Node):
             orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
 
     def occ_callback(self, msg):
-        global occdata
+        global myoccdata
         # self.get_logger().info('In occ_callback')
         # create numpy array
         msgdata = np.array(msg.data)
@@ -211,8 +215,35 @@ class AutoNav(Node):
         oc2 = msgdata + 1
         # reshape to 2D array using column order
         # self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width,order='F'))
+        try:
+            trans = self.tfBuffer.lookup_transform(
+                'map', 'base_link', rclpy.time.Time())
+        except (LookupException, ConnectivityException, ExtrapolationException) as e:
+            self.get_logger().info('No transformation found')
+            return
+        print('In occ callback:')
         self.occdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
-        occdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
+        myoccdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
+        odata = myoccdata
+        cur_pos = trans.transform.translation
+        cur_rot = trans.transform.rotation
+        map_res = msg.info.resolution
+        # Get map origin struct has field of x,y, and z
+        map_origin = msg.info.origin.position
+        # Get map grid positions for x,y position
+        grid_x = round((cur_pos.x - map_origin.x) / map_res)
+        grid_y = round((cur_pos.y - map_origin.y) / map_res)
+        odata[grid_y][grid_x] = 0
+        img = Image.fromarray(odata)
+        img_transformed = Image.new(img.mode, (iwidth, iheight), map_bg_color)
+        img_transformed.paste(img, (0, 0))
+        rotated = img_transformed.rotate(np.degrees(
+            yaw) - 90, expand=True, fillcolor=map_bg_color)
+        print(myoccdata)
+        plt.imshow(rotated, cmap='gray', origin='lower')
+        plt.draw_all()
+        # pause to make sure the plot gets created
+        plt.pause(0.00000000001)
         # print to file
         np.savetxt(mapfile, self.occdata)
 
@@ -405,11 +436,11 @@ class AutoNav(Node):
         # So, we will check for contour closure by checking if any of the contours
         # have areas that are more than 10 times larger than the arc length
         # This value may need to be adjusted with more testing.
-        global occdata
+        global myoccdata
         ALTHRESH = 10
         # We will slightly fill in the contours to make them easier to detect
         DILATE_PIXELS = 3
-        mapdata = occdata
+        mapdata = myoccdata
         # assumes mapdata is uint8 and consists of 0 (unmapped), 1 (unoccupied),
         # and other positive values up to 101 (occupied)
         # so we will apply a threshold of 2 to create a binary image with the
@@ -452,7 +483,7 @@ class AutoNav(Node):
             return False
 
     def mover(self):
-        global occdata, current_lrleft, previous_lrleft, isTargetDetected, isDoneShooting
+        global myoccdata, current_lrleft, previous_lrleft, isTargetDetected, isDoneShooting
         try:
             # initialize variable to write elapsed time to file
             # contourCheck = 1
@@ -470,7 +501,7 @@ class AutoNav(Node):
 
             while rclpy.ok():
                 if self.laser_range.size != 0:
-                    if contourCheck and len(occdata) != 0:
+                    if contourCheck and len(myoccdata) != 0:
                         print("Inside contourCheck:")
                         if self.closure():
                             self.stopbot()
@@ -481,7 +512,7 @@ class AutoNav(Node):
                                         str(time.time() - start_time))
                             contourCheck = 0
                             # save the map
-                            cv2.imwrite('mazemap.png', occdata)
+                            cv2.imwrite('mazemap.png', myoccdata)
                             print("Map is complete!")
                             if isDoneShooting:
                                 print("I'm done shooting and My map is complete")
@@ -501,6 +532,7 @@ class AutoNav(Node):
                     self.get_logger().info('Distances front angles: %s' % str(lrfront))
                     print(current_lrleft)
                     # self.get_logger().info('Distances left angles: %s' % str(lrleft))
+                    rclpy.spin_once(self)
                     if not isTargetDetected:
                         self.pick_direction()
                     else:
