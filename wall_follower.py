@@ -33,17 +33,19 @@ occ_bins = [-1, 0, 100, 101]
 stop_distance = 0.40
 
 front_angles = range(-10, 10 + 1, 1)
-frontleft_angles = range(44,46 + 1,1)
+frontleft_angles = range(44, 46 + 1, 1)
 ninety_degrees_left_side_angles = range(85, 95 + 1, 1)
 back_angles = range(150, 210 + 1, 1)
 ninety_degrees_right_side_angles = range(265, 275 + 1, 1)
-frontright_angles = range(310,320+1,1)
+frontright_angles = range(310, 320+1, 1)
 
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
 occdata = np.array([])
 current_lrleft = 0
 previous_lrleft = 0
+isTargetDetected = False
+isDoneShooting = False
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
@@ -87,14 +89,14 @@ class AutoNav(Node):
             'targeting_status',
             self.target_callback,
             10)
-        self.targeting_subscription # prevent unused variable warning
+        self.targeting_subscription  # prevent unused variable warning
 
         # Create a subscriber
-        # This node subscribes to messages of type Float64MultiArray  
+        # This node subscribes to messages of type Float64MultiArray
         # over a topic named: /en613/state_est
         # The message represents the current estimated state:
         #   [x, y, yaw]
-        # The callback function is called as soon as a message 
+        # The callback function is called as soon as a message
         # is received.
         # The maximum number of queued messages is 10.
         self.subscription = self.create_subscription(
@@ -134,7 +136,7 @@ class AutoNav(Node):
             qos_profile_sensor_data)
         self.scan_subscription  # prevent unused variable warning
         self.laser_range = np.array([])
-    
+
     def state_estimate_callback(self, msg):
         """
         Extract the position and orientation data. 
@@ -146,18 +148,18 @@ class AutoNav(Node):
         self.current_x = curr_state[0]
         self.current_y = curr_state[1]
         self.current_yaw = curr_state[2]
-         
+
         # Wait until we have received some goal destinations.
         """ if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
             return """
-                 
+
         # Print the pose of the robot
         # Used for testing
         self.get_logger().info('X:%f Y:%f YAW:%f' % (
-        self.current_x,
-        self.current_y,
-        np.rad2deg(self.current_yaw)))  # Goes from -pi to pi 
-         
+            self.current_x,
+            self.current_y,
+            np.rad2deg(self.current_yaw)))  # Goes from -pi to pi
+
         """  # See if the Bug2 algorithm is activated. If yes, call bug2()
         if self.bug2_switch == "ON":
             self.bug2()
@@ -171,12 +173,27 @@ class AutoNav(Node):
                 pass # Do nothing
         """
 
+    def target_callback(self, msg):
+        global isTargetDetected, isDoneShooting
+        self.get_logger().info('In target_callback')
+        self.get_logger().info('I heard: "%s"' % msg.data)
+        if (msg.data == 'Detected'):
+            print('Target Detected')
+            isTargetDetected = True
+            isDoneShooting = False
+        elif (msg.data == 'Done'):
+            print('Is Done shooting')
+            isDoneShooting = True
+            isTargetDetected = False
+        else:
+            print('No Target Detected')
+            isTargetDetected = False
+
     def odom_callback(self, msg):
         # self.get_logger().info('In odom_callback')
         orientation_quat = msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(
             orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
-
 
     def occ_callback(self, msg):
         global occdata
@@ -270,10 +287,11 @@ class AutoNav(Node):
         # lrright = (self.laser_range[ninety_degrees_right_side_angles] < float(stop_distance)).nonzero()
         # lrfrontright = (self.laser_range[frontright_angles] < float(stop_distance)).nonzero()
         # self.get_logger().info('Distances: %s' % str(lrfront))
-        self.front_dist = np.nan_to_num(self.laser_range[0],copy=False,nan=100)
-        self.leftfront_dist = np.nan_to_num(self.laser_range[45],copy=False)
-        self.rightfront_dist = np.nan_to_num(self.laser_range[315],copy=False)
-        
+        self.front_dist = np.nan_to_num(
+            self.laser_range[0], copy=False, nan=100)
+        self.leftfront_dist = np.nan_to_num(self.laser_range[45], copy=False)
+        self.rightfront_dist = np.nan_to_num(self.laser_range[315], copy=False)
+
         self.get_logger().info('Front Distance: %s' % str(self.front_dist))
         self.get_logger().info('Front Left Distance: %s' % str(self.leftfront_dist))
         self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
@@ -281,10 +299,10 @@ class AutoNav(Node):
         # >d means no wall detected by that laser beam
         # <d means an wall was detected by that laser beam
         d = 0.28
-        # Set turning speeds (to the left) in rad/s 
+        # Set turning speeds (to the left) in rad/s
         # These values were determined by trial and error.
         self.turning_speed_wf_fast = 1.0  # Fast turn ideal = 1.0
-        self.turning_speed_wf_slow = 0.50 # Slow turn = 0.50
+        self.turning_speed_wf_slow = 0.50  # Slow turn = 0.50
         # Set movement speed
         self.forward_speed = speedchange
         # Set up twist message as msg
@@ -295,56 +313,54 @@ class AutoNav(Node):
         msg.angular.x = 0.0
         msg.angular.y = 0.0
         msg.angular.z = 0.0
-         
+
         if self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist > d:
             self.wall_following_state = "search for wall"
             msg.linear.x = self.forward_speed
-            msg.angular.z = -self.turning_speed_wf_slow # turn right to find wall
-             
+            msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
+
         elif self.leftfront_dist > d and self.front_dist < d and self.rightfront_dist > d:
             self.wall_following_state = "turn left"
             msg.angular.z = self.turning_speed_wf_fast
-             
-             
+
         elif (self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist < d):
             if (self.rightfront_dist < 0.25):
                 # Getting too close to the wall
                 self.wall_following_state = "turn left"
                 msg.linear.x = self.forward_speed
-                msg.angular.z = self.turning_speed_wf_fast      
-            else:           
+                msg.angular.z = self.turning_speed_wf_fast
+            else:
                 # Go straight ahead
-                self.wall_following_state = "follow wall" 
-                msg.linear.x = self.forward_speed   
-                                     
+                self.wall_following_state = "follow wall"
+                msg.linear.x = self.forward_speed
+
         elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist > d:
             self.wall_following_state = "search for wall"
             msg.linear.x = self.forward_speed
-            msg.angular.z = -self.turning_speed_wf_slow # turn right to find wall
-             
+            msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
+
         elif self.leftfront_dist > d and self.front_dist < d and self.rightfront_dist < d:
             self.wall_following_state = "turn left"
             msg.angular.z = self.turning_speed_wf_fast
-             
+
         elif self.leftfront_dist < d and self.front_dist < d and self.rightfront_dist > d:
             self.wall_following_state = "turn left"
             msg.angular.z = self.turning_speed_wf_fast
-             
+
         elif self.leftfront_dist < d and self.front_dist < d and self.rightfront_dist < d:
             self.wall_following_state = "turn left"
             msg.angular.z = self.turning_speed_wf_fast
-             
+
         elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist < d:
             self.wall_following_state = "search for wall"
             msg.linear.x = self.forward_speed
-            msg.angular.z = -self.turning_speed_wf_slow # turn right to find wall
-             
+            msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
+
         else:
             pass
- 
-        # Send velocity command to the robot
-        self.publisher_.publish(msg)    
 
+        # Send velocity command to the robot
+        self.publisher_.publish(msg)
 
     def stopbot(self):
         self.get_logger().info('In stopbot')
@@ -436,7 +452,7 @@ class AutoNav(Node):
             return False
 
     def mover(self):
-        global occdata, current_lrleft, previous_lrleft
+        global occdata, current_lrleft, previous_lrleft, isTargetDetected, isDoneShooting
         try:
             # initialize variable to write elapsed time to file
             # contourCheck = 1
@@ -454,26 +470,29 @@ class AutoNav(Node):
 
             while rclpy.ok():
                 if self.laser_range.size != 0:
-                    # if contourCheck and len(occdata) != 0:
-                    #     print("Inside contourCheck:")
-                    #     if self.closure():
-                    #         self.stopbot()
-                    #         print("Inside selfclosure contourcheck:")
-                    #         # map is complete, so save current time into file
-                    #         with open("maptime.txt", "w") as f:
-                    #             f.write("Elapsed Time: " +
-                    #                     str(time.time() - start_time))
-                    #         contourCheck = 0
-                    #         # save the map
-                    #         cv2.imwrite('mazemap.png', occdata)
-                    #         print("Map is complete!")
-                    #         break
+                    if contourCheck and len(occdata) != 0:
+                        print("Inside contourCheck:")
+                        if self.closure():
+                            self.stopbot()
+                            print("Inside selfclosure contourcheck:")
+                            # map is complete, so save current time into file
+                            with open("maptime.txt", "w") as f:
+                                f.write("Elapsed Time: " +
+                                        str(time.time() - start_time))
+                            contourCheck = 0
+                            # save the map
+                            cv2.imwrite('mazemap.png', occdata)
+                            print("Map is complete!")
+                            if isDoneShooting:
+                                print("I'm done shooting and My map is complete")
+                                break
 
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
                     lrfront = (self.laser_range[front_angles]
-                           < float(stop_distance)).nonzero()
-                    lrfrontleft = (self.laser_range[45] < float(stop_distance)).nonzero()
+                               < float(stop_distance)).nonzero()
+                    lrfrontleft = (self.laser_range[45] < float(
+                        stop_distance)).nonzero()
                     lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
                         stop_distance)).nonzero()
                     # current_lrleft = np.sum(
@@ -482,7 +501,13 @@ class AutoNav(Node):
                     self.get_logger().info('Distances front angles: %s' % str(lrfront))
                     print(current_lrleft)
                     # self.get_logger().info('Distances left angles: %s' % str(lrleft))
-                    self.pick_direction()
+                    if not isTargetDetected:
+                        self.pick_direction()
+                    else:
+                        self.stopbot()
+                        while (isTargetDetected):
+                            print('In mover, target detected.')
+                            rclpy.spin_once(self)
                     # # if the list is not empty
                     # # if current_lrleft > 0.25:
                     # if len(lrleft[0]) > 0:
