@@ -28,12 +28,14 @@ import cv2
 import math
 import cmath
 import time
+from PIL import Image
 
 # constants
 rotatechange = 0.5
 speedchange = 0.10
 occ_bins = [-1, 0, 100, 101]
 stop_distance = 0.40
+map_bg_color = 1
 
 front_angles = range(-10, 10 + 1, 1)
 frontleft_angles = range(44, 46 + 1, 1)
@@ -140,6 +142,7 @@ class AutoNav(Node):
         self.scan_subscription  # prevent unused variable warning
         self.laser_range = np.array([])
         self.tfBuffer = tf2_ros.Buffer()
+        self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
 
     def state_estimate_callback(self, msg):
         """
@@ -194,14 +197,14 @@ class AutoNav(Node):
             isTargetDetected = False
 
     def odom_callback(self, msg):
-        # self.get_logger().info('In odom_callback')
+        self.get_logger().info('In odom_callback')
         orientation_quat = msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(
             orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
 
     def occ_callback(self, msg):
         global myoccdata
-        # self.get_logger().info('In occ_callback')
+        self.get_logger().info('In occ_callback')
         # create numpy array
         msgdata = np.array(msg.data)
         # compute histogram to identify percent of bins with -1
@@ -227,10 +230,15 @@ class AutoNav(Node):
         odata = myoccdata
         cur_pos = trans.transform.translation
         cur_rot = trans.transform.rotation
+        myroll, mypitch, myyaw = euler_from_quaternion(
+            cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
         map_res = msg.info.resolution
         # Get map origin struct has field of x,y, and z
         map_origin = msg.info.origin.position
         # Get map grid positions for x,y position
+        # Get map width and height
+        iwidth = msg.info.width
+        iheight = msg.info.height
         grid_x = round((cur_pos.x - map_origin.x) / map_res)
         grid_y = round((cur_pos.y - map_origin.y) / map_res)
         odata[grid_y][grid_x] = 0
@@ -238,12 +246,14 @@ class AutoNav(Node):
         img_transformed = Image.new(img.mode, (iwidth, iheight), map_bg_color)
         img_transformed.paste(img, (0, 0))
         rotated = img_transformed.rotate(np.degrees(
-            yaw) - 90, expand=True, fillcolor=map_bg_color)
-        print(myoccdata)
-        plt.imshow(rotated, cmap='gray', origin='lower')
-        plt.draw_all()
+            myyaw) - 90, expand=True, fillcolor=map_bg_color)
+
+        # For some reason, plotting will cause the remaining wall
+        # follower to work weirdly
+        # plt.imshow(odata, cmap='gray', origin='lower')
+        # plt.draw_all()
         # pause to make sure the plot gets created
-        plt.pause(0.00000000001)
+        # plt.pause(0.00000000001)
         # print to file
         np.savetxt(mapfile, self.occdata)
 
@@ -532,7 +542,6 @@ class AutoNav(Node):
                     self.get_logger().info('Distances front angles: %s' % str(lrfront))
                     print(current_lrleft)
                     # self.get_logger().info('Distances left angles: %s' % str(lrleft))
-                    rclpy.spin_once(self)
                     if not isTargetDetected:
                         self.pick_direction()
                     else:
@@ -567,6 +576,7 @@ class AutoNav(Node):
         finally:
             # stop moving
             self.stopbot()
+            cv2.imwrite('mazemapfinally.png', myoccdata)
 
 
 def main(args=None):
