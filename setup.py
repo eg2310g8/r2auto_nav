@@ -38,6 +38,8 @@ setup(
             'bugging = auto_nav.bugging:main',
             'goalie = auto_nav.goal_giver:main',
             'targeting = auto_nav.r2_targeting:main',
+            'orgywall = auto_nav.wall_follower_working_copy:main',
+            'junyeong = auto_nav.wall_follower_junyeong:main',
         ],
     },
 )

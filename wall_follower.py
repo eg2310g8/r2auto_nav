@@ -32,7 +32,7 @@ from PIL import Image
 
 # constants
 rotatechange = 0.5
-speedchange = 0.10
+speedchange = 0.15
 occ_bins = [-1, 0, 100, 101]
 stop_distance = 0.40
 map_bg_color = 1
@@ -51,6 +51,10 @@ current_lrleft = 0
 previous_lrleft = 0
 isTargetDetected = False
 isDoneShooting = False
+
+# To change before starting test
+stopping_time_in_seconds = 540 # 9 minutes
+initial_direction = "Front" # "Front", "Left", "Right", "Back"
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
@@ -156,30 +160,6 @@ class AutoNav(Node):
         self.current_y = curr_state[1]
         self.current_yaw = curr_state[2]
 
-        # Wait until we have received some goal destinations.
-        """ if self.goal_x_coordinates == False and self.goal_y_coordinates == False:
-            return """
-
-        # Print the pose of the robot
-        # Used for testing
-        self.get_logger().info('X:%f Y:%f YAW:%f' % (
-            self.current_x,
-            self.current_y,
-            np.rad2deg(self.current_yaw)))  # Goes from -pi to pi
-
-        """  # See if the Bug2 algorithm is activated. If yes, call bug2()
-        if self.bug2_switch == "ON":
-            self.bug2()
-        else:
-
-            if self.robot_mode == "go to goal mode":
-                self.go_to_goal()
-            elif self.robot_mode == "wall following mode":
-                self.follow_wall()
-            else:
-                pass # Do nothing
-        """
-
     def target_callback(self, msg):
         global isTargetDetected, isDoneShooting
         self.get_logger().info('In target_callback')
@@ -228,7 +208,7 @@ class AutoNav(Node):
         self.occdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
         myoccdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
         odata = myoccdata
-        cur_pos = trans.transform.translation
+        """ cur_pos = trans.transform.translation
         cur_rot = trans.transform.rotation
         myroll, mypitch, myyaw = euler_from_quaternion(
             cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
@@ -246,7 +226,7 @@ class AutoNav(Node):
         img_transformed = Image.new(img.mode, (iwidth, iheight), map_bg_color)
         img_transformed.paste(img, (0, 0))
         rotated = img_transformed.rotate(np.degrees(
-            myyaw) - 90, expand=True, fillcolor=map_bg_color)
+            myyaw) - 90, expand=True, fillcolor=map_bg_color) """
 
         # For some reason, plotting will cause the remaining wall
         # follower to work weirdly
@@ -330,8 +310,8 @@ class AutoNav(Node):
         # self.get_logger().info('Distances: %s' % str(lrfront))
         self.front_dist = np.nan_to_num(
             self.laser_range[0], copy=False, nan=100)
-        self.leftfront_dist = np.nan_to_num(self.laser_range[45], copy=False)
-        self.rightfront_dist = np.nan_to_num(self.laser_range[315], copy=False)
+        self.leftfront_dist = np.nan_to_num(self.laser_range[45], copy=False, nan = 100)
+        self.rightfront_dist = np.nan_to_num(self.laser_range[315], copy=False, nan = 100)
 
         self.get_logger().info('Front Distance: %s' % str(self.front_dist))
         self.get_logger().info('Front Left Distance: %s' % str(self.leftfront_dist))
@@ -342,8 +322,8 @@ class AutoNav(Node):
         d = 0.28
         # Set turning speeds (to the left) in rad/s
         # These values were determined by trial and error.
-        self.turning_speed_wf_fast = 1.0  # Fast turn ideal = 1.0
-        self.turning_speed_wf_slow = 0.50  # Slow turn = 0.50
+        self.turning_speed_wf_fast = 0.75  # Fast turn ideal = 1.0
+        self.turning_speed_wf_slow = 0.40  # Slow turn = 0.50
         # Set movement speed
         self.forward_speed = speedchange
         # Set up twist message as msg
@@ -415,6 +395,17 @@ class AutoNav(Node):
     def initialmove(self):
         self.get_logger().info('In initialmove, move backwards')
         # publish to cmd_vel to move TurtleBot
+        if initial_direction == "Back":
+            self.get_logger().info("Going back")
+        elif initial_direction == "Right":
+            self.get_logger().info("Going right")
+            self.rotatebot(90)
+        elif initial_direction == "Left":
+            self.get_logger().info("Going right")
+            self.rotatebot(-90)
+        elif initial_direction == "Front":
+            self.get_logger().info("Going Forward")
+            self.rotatebot(180)
         twist = Twist()
         twist.linear.x = -speedchange
         twist.angular.z = 0.0
@@ -511,7 +502,7 @@ class AutoNav(Node):
 
             while rclpy.ok():
                 if self.laser_range.size != 0:
-                    if contourCheck and len(myoccdata) != 0:
+                    """ if contourCheck and len(myoccdata) != 0:
                         print("Inside contourCheck:")
                         if self.closure():
                             self.stopbot()
@@ -526,8 +517,11 @@ class AutoNav(Node):
                             print("Map is complete!")
                             if isDoneShooting:
                                 print("I'm done shooting and My map is complete")
-                                break
-
+                                break """
+                    elapsed_time = time.time() - start_time
+                    if elapsed_time > stopping_time_in_seconds:
+                        print("5 minutes have passed")
+                        break
                     # check distances in front of TurtleBot and find values less
                     # than stop_distance
                     lrfront = (self.laser_range[front_angles]
@@ -546,9 +540,10 @@ class AutoNav(Node):
                         self.pick_direction()
                     else:
                         self.stopbot()
-                        while (isTargetDetected):
+                        while (not isDoneShooting):
                             print('In mover, target detected.')
                             rclpy.spin_once(self)
+                        isTargetDetected = False
                     # # if the list is not empty
                     # # if current_lrleft > 0.25:
                     # if len(lrleft[0]) > 0:
