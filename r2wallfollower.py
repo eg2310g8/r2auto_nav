@@ -31,8 +31,6 @@ import time
 # constants
 rotatechange = 0.5
 speedchange = 0.15
-stopping_time_in_seconds = 540  # 9 minutes
-initial_direction = "Front"  # "Front", "Left", "Right", "Back"
 back_angles = range(150, 210 + 1, 1)
 
 scanfile = 'lidar.txt'
@@ -42,6 +40,10 @@ occ_bins = [-1, 0, 100, 101]
 map_bg_color = 1
 isTargetDetected = False
 isDoneShooting = False
+
+# To change before starting test
+stopping_time_in_seconds = 540  # 9 minutes
+initial_direction = "Front"  # "Front", "Left", "Right", "Back"
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
