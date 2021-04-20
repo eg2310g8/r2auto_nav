@@ -271,7 +271,7 @@ class AutoNav(Node):
         self.publisher_.publish(twist)
 
     def pick_direction(self):
-
+        self.get_logger().info('In pick direction:')
         self.front_dist = np.nan_to_num(
             self.laser_range[0], copy=False, nan=100)
         self.leftfront_dist = np.nan_to_num(
