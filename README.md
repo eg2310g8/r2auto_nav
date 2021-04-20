@@ -19,7 +19,9 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 - Inside the ```pick_direction``` function, you can adjust ```d``` which is the distance the robot will try to maintain from the wall as it follows the wall.
 
 ### For the targeting code
-- Under constants, you can change ```speedchange``` and ```rotatechange``` to adjust the speed and rotation speed of the TurtleBot. Moreover, you can adjust ```detecting_threshold``` which determines the detection temperature threshold of the target and ```firing_threshold``` which determines the firing temperature threshold to fit your needs.
+Under constants, you can change :
+- ```speedchange``` and ```rotatechange``` to adjust the speed and rotation speed of the TurtleBot. 
+- ```detecting_threshold``` which determines the target detection temperature threshold and ```firing_threshold``` which determines the firing temperature threshold to fit your needs.
 
 ## How to Use
 
