@@ -17,6 +17,7 @@ rotatechange = 0.1
 speedchange = 0.05
 detecting_threshold = 32.0
 firing_threshold = 35.0
+
 message_sent = 'Not Detected'
 
 # Set up Thermal Camera

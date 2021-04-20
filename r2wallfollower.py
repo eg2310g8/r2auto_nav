@@ -31,28 +31,17 @@ import time
 # constants
 rotatechange = 0.5
 speedchange = 0.15
-occ_bins = [-1, 0, 100, 101]
-stop_distance = 0.40
-map_bg_color = 1
-
-front_angles = range(-10, 10 + 1, 1)
-frontleft_angles = range(44, 46 + 1, 1)
-ninety_degrees_left_side_angles = range(85, 95 + 1, 1)
+stopping_time_in_seconds = 540  # 9 minutes
+initial_direction = "Front"  # "Front", "Left", "Right", "Back"
 back_angles = range(150, 210 + 1, 1)
-ninety_degrees_right_side_angles = range(265, 275 + 1, 1)
-frontright_angles = range(310, 320+1, 1)
 
 scanfile = 'lidar.txt'
 mapfile = 'map.txt'
 myoccdata = np.array([])
-current_lrleft = 0
-previous_lrleft = 0
+occ_bins = [-1, 0, 100, 101]
+map_bg_color = 1
 isTargetDetected = False
 isDoneShooting = False
-
-# To change before starting test
-stopping_time_in_seconds = 540  # 9 minutes
-initial_direction = "Front"  # "Front", "Left", "Right", "Back"
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
@@ -452,7 +441,7 @@ class AutoNav(Node):
             return False
 
     def mover(self):
-        global myoccdata, current_lrleft, previous_lrleft, isTargetDetected, isDoneShooting
+        global myoccdata, isTargetDetected, isDoneShooting
         try:
             rclpy.spin_once(self)
 
@@ -498,11 +487,6 @@ class AutoNav(Node):
                         print(
                             "Specified time has passed. Automatically shutting down.")
                         break
-
-                    # print out distances in front of the robot
-                    lrfront = (self.laser_range[front_angles]
-                               < float(stop_distance)).nonzero()
-                    self.get_logger().info('Distances front angles: %s' % str(lrfront))
 
                     # while there is no target detected, keep picking direction (do wall follow)
                     if not isTargetDetected:
