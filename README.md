@@ -40,4 +40,4 @@ Running Instructions:
 - Start the targeting code from the RPi on the TurtleBot: 
   ```ros2 run <package_name> <entry_point_specified_in_the_setup.py> ```
 - Start the wall following code from your laptop: 
-  ```ros2 run <package_name> <entry_point_specified_in_the_setup.py> ```
+  ```ros2 run <package_name> r2wallfollower ```
