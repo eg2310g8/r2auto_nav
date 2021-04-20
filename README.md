@@ -15,7 +15,7 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 ## Possible Configuration
 
 ### For the wall following code
-- Under constants, you can adjust the speed and rotation speed of the TurtleBot.
+- Under constants, you can change ```speedchange``` and ```rotatechange``` to adjust the speed and rotation speed of the TurtleBot. Moreover, you can also change ```initial_direction``` to change the direction of the robot's initial move (such that the robot will find the right wall to follow).
 - Inside the ```pick_direction``` function, you can adjust ```d``` which is the distance the robot will try to maintain from the wall as it follows the wall.
 
 ### For the targeting code
