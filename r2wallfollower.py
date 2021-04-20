@@ -21,14 +21,12 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Float64MultiArray, String
 import numpy as np
-import matplotlib.pyplot as plt
 import tf2_ros
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
 import cv2
 import math
 import cmath
 import time
-from PIL import Image
 
 # constants
 rotatechange = 0.5
@@ -53,8 +51,8 @@ isTargetDetected = False
 isDoneShooting = False
 
 # To change before starting test
-stopping_time_in_seconds = 540 # 9 minutes
-initial_direction = "Front" # "Front", "Left", "Right", "Back"
+stopping_time_in_seconds = 540  # 9 minutes
+initial_direction = "Front"  # "Front", "Left", "Right", "Back"
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
@@ -204,37 +202,9 @@ class AutoNav(Node):
         except (LookupException, ConnectivityException, ExtrapolationException) as e:
             self.get_logger().info('No transformation found')
             return
-        print('In occ callback:')
         self.occdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
         myoccdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
         odata = myoccdata
-        """ cur_pos = trans.transform.translation
-        cur_rot = trans.transform.rotation
-        myroll, mypitch, myyaw = euler_from_quaternion(
-            cur_rot.x, cur_rot.y, cur_rot.z, cur_rot.w)
-        map_res = msg.info.resolution
-        # Get map origin struct has field of x,y, and z
-        map_origin = msg.info.origin.position
-        # Get map grid positions for x,y position
-        # Get map width and height
-        iwidth = msg.info.width
-        iheight = msg.info.height
-        grid_x = round((cur_pos.x - map_origin.x) / map_res)
-        grid_y = round((cur_pos.y - map_origin.y) / map_res)
-        odata[grid_y][grid_x] = 0
-        img = Image.fromarray(odata)
-        img_transformed = Image.new(img.mode, (iwidth, iheight), map_bg_color)
-        img_transformed.paste(img, (0, 0))
-        rotated = img_transformed.rotate(np.degrees(
-            myyaw) - 90, expand=True, fillcolor=map_bg_color) """
-
-        # For some reason, plotting will cause the remaining wall
-        # follower to work weirdly
-        # plt.imshow(odata, cmap='gray', origin='lower')
-        # plt.draw_all()
-        # pause to make sure the plot gets created
-        # plt.pause(0.00000000001)
-        # print to file
         np.savetxt(mapfile, self.occdata)
 
     def scan_callback(self, msg):
@@ -302,25 +272,23 @@ class AutoNav(Node):
 
     def pick_direction(self):
 
-        # lrfront = (self.laser_range[front_angles] < float(stop_distance)).nonzero()
-        # lrfrontleft = (self.laser_range[frontleft_angles] < float(stop_distance)).nonzero()
-        # lrleft = (self.laser_range[ninety_degrees_left_side_angles] < float(stop_distance)).nonzero()
-        # lrright = (self.laser_range[ninety_degrees_right_side_angles] < float(stop_distance)).nonzero()
-        # lrfrontright = (self.laser_range[frontright_angles] < float(stop_distance)).nonzero()
-        # self.get_logger().info('Distances: %s' % str(lrfront))
         self.front_dist = np.nan_to_num(
             self.laser_range[0], copy=False, nan=100)
-        self.leftfront_dist = np.nan_to_num(self.laser_range[45], copy=False, nan = 100)
-        self.rightfront_dist = np.nan_to_num(self.laser_range[315], copy=False, nan = 100)
+        self.leftfront_dist = np.nan_to_num(
+            self.laser_range[45], copy=False, nan=100)
+        self.rightfront_dist = np.nan_to_num(
+            self.laser_range[315], copy=False, nan=100)
 
         self.get_logger().info('Front Distance: %s' % str(self.front_dist))
         self.get_logger().info('Front Left Distance: %s' % str(self.leftfront_dist))
         self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
+
         # Logic for following the wall
         # >d means no wall detected by that laser beam
-        # <d means an wall was detected by that laser beam
-        d = 0.28
+        # <d means a wall was detected by that laser beam
+        d = 0.28  # wall distance from the robot. It will follow the right wall and maintain this distance
         # Set turning speeds (to the left) in rad/s
+
         # These values were determined by trial and error.
         self.turning_speed_wf_fast = 0.75  # Fast turn ideal = 1.0
         self.turning_speed_wf_slow = 0.40  # Slow turn = 0.50
@@ -486,82 +454,72 @@ class AutoNav(Node):
     def mover(self):
         global myoccdata, current_lrleft, previous_lrleft, isTargetDetected, isDoneShooting
         try:
-            # initialize variable to write elapsed time to file
-            # contourCheck = 1
             rclpy.spin_once(self)
+
+            # ensure that we have a valid lidar data before we start wall follow logic
             while (self.laser_range.size == 0):
-                print("Spin to get a valid startpoint, endpoint and lidar data")
+                print("Spin to get a valid lidar data")
                 rclpy.spin_once(self)
-            # initialize variable to write elapsed time to file
             contourCheck = 1
             start_time = time.time()
-            # find direction with the largest distance from the Lidar,
-            # rotate to that direction, and start moving
+
+            # initial move to find the appropriate wall to follow
             self.initialmove()
+            # start wall follow logic
             self.pick_direction()
 
             while rclpy.ok():
                 if self.laser_range.size != 0:
-                    """ if contourCheck and len(myoccdata) != 0:
-                        print("Inside contourCheck:")
-                        if self.closure():
-                            self.stopbot()
-                            print("Inside selfclosure contourcheck:")
-                            # map is complete, so save current time into file
-                            with open("maptime.txt", "w") as f:
-                                f.write("Elapsed Time: " +
-                                        str(time.time() - start_time))
-                            contourCheck = 0
-                            # save the map
-                            cv2.imwrite('mazemap.png', myoccdata)
-                            print("Map is complete!")
-                            if isDoneShooting:
-                                print("I'm done shooting and My map is complete")
-                                break """
+
+                    # Uncomment this part and tab it accordingly
+                    # to enable auto_checking if the map is complete
+                    # using closure function
+                    # The reliableness of this part can be improved
+
+                    # if contourCheck and len(myoccdata) != 0:
+                    # print("Inside contourCheck:")
+                    # if self.closure():
+                    # self.stopbot()
+                    # print("Inside selfclosure contourcheck:")
+                    # map is complete, so save current time into file
+                    # with open("maptime.txt", "w") as f:
+                    # f.write("Elapsed Time: " +
+                    # str(time.time() - start_time))
+                    # contourCheck = 0
+                    # save the map
+                    # cv2.imwrite('mazemap.png', myoccdata)
+                    # print("Map is complete!")
+                    # if isDoneShooting:
+                    # print("I'm done shooting and my map is complete!")
+                    # break
+
                     elapsed_time = time.time() - start_time
                     if elapsed_time > stopping_time_in_seconds:
-                        print("5 minutes have passed")
+                        print(
+                            "Specified time has passed. Automatically shutting down.")
                         break
-                    # check distances in front of TurtleBot and find values less
-                    # than stop_distance
+
+                    # print out distances in front of the robot
                     lrfront = (self.laser_range[front_angles]
                                < float(stop_distance)).nonzero()
-                    lrfrontleft = (self.laser_range[45] < float(
-                        stop_distance)).nonzero()
-                    lrleft = (self.laser_range[ninety_degrees_left_side_angles] > float(
-                        stop_distance)).nonzero()
-                    # current_lrleft = np.sum(
-                    # self.laser_range[ninety_degrees_left_side_angles])
-                    current_lrleft = self.laser_range[90]
                     self.get_logger().info('Distances front angles: %s' % str(lrfront))
-                    print(current_lrleft)
-                    # self.get_logger().info('Distances left angles: %s' % str(lrleft))
+
+                    # while there is no target detected, keep picking direction (do wall follow)
                     if not isTargetDetected:
                         self.pick_direction()
+
+                    # when there is target detected, stop the bot and stop wall following logic
+                    # until it finish shooting at the target.
+                    # Then set isTargetDetected to False to resume the wall following logic
+
                     else:
                         self.stopbot()
                         while (not isDoneShooting):
                             print('In mover, target detected.')
                             rclpy.spin_once(self)
                         isTargetDetected = False
-                    # # if the list is not empty
-                    # # if current_lrleft > 0.25:
-                    # if len(lrleft[0]) > 0:
-                    #     self.stopbot()
-                    #     self.get_logger().info("Now turning left")
-                    #     self.turn_left()
-                    #     # self.pick_direction()
-
-                    # elif (len(lrfront[0]) > 0):
-                    #     # stop moving
-                    #     self.stopbot()
-                    #     # find direction with the largest distance from the Lidar
-                    #     # rotate to that direction
-                    #     # start moving
-                    #     self.pick_direction()
 
                 # allow the callback functions to run
-                # previous_lrleft = current_lrleft
                 rclpy.spin_once(self)
 
         except Exception as e:
@@ -571,6 +529,7 @@ class AutoNav(Node):
         finally:
             # stop moving
             self.stopbot()
+            # save map
             cv2.imwrite('mazemapfinally.png', myoccdata)
 
 
@@ -579,10 +538,6 @@ def main(args=None):
 
     auto_nav = AutoNav()
     auto_nav.mover()
-
-    # create matplotlib figure
-    # plt.ion()
-    # plt.show()
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically

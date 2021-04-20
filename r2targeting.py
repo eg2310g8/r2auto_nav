@@ -24,22 +24,19 @@ message_sent = 'Not Detected'
 i2c = busio.I2C(board.SCL, board.SDA)
 amg = adafruit_amg88xx.AMG88XX(i2c)
 
-# Reads thermal camera info, and tells Servo, Motor, and Stepper what to do
-
 
 class ThermalCamera(Node):
     def __init__(self):
         super().__init__('thermalcamera')
         self.publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
+        # Set up publisher 'targeting_status' to communicate with wallfollower
         self.publisher_targeting = self.create_publisher(
             String, 'targeting_status', 10)
         timer_period = 0.5  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
         self.i = 0
-        #self.publisher_servoangle = self.create_publisher(Int8,'servo_angle',10)
-        #self.publisher_startmotor = self.create_publisher(Bool,'start_motor',10)
-        #self.publisher_startstepper = self.create_publisher(Bool,'start_stepper',10)
 
+    # targeting_status callback function to stop wallfollower logic when target is detected
     def timer_callback(self):
         global message_sent
         msg = String()
@@ -55,6 +52,7 @@ class ThermalCamera(Node):
         self.publisher_.publish(twist)
 
     def find_target(self):
+
         # See if target found
         global message_sent
         target_found = False
@@ -73,13 +71,10 @@ class ThermalCamera(Node):
                         target_found = True
                     print("{0:.1f}".format(temp), end=" ")
                 print("]")
-                '''
-                # Pad to 1 decimal place
-                print(["{0:.1f}".format(temp) for temp in row])
-                print("")
-                '''
                 print("\n")
+
             if detected == True:
+                # Communicate with wallfollower to stop working
                 message_sent = 'Detected'
                 self.timer_callback()
                 print(" ")
@@ -87,8 +82,6 @@ class ThermalCamera(Node):
                 print("]")
                 print("\n")
                 time.sleep(1)
-
-        # Tell AutoNav to stop working
 
         # If target is found, stop movement
         self.stopbot()
