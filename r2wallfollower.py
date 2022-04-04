@@ -19,7 +19,7 @@ from geometry_msgs.msg import Twist
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
-from std_msgs.msg import Float64MultiArray, String
+from std_msgs.msg import Float64MultiArray, String, Bool, Float32MultiArray,Float32
 import numpy as np
 import tf2_ros
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
@@ -27,10 +27,13 @@ import cv2
 import math
 import cmath
 import time
+import matplotlib.pyplot as plt
+from PIL import Image 
+from scipy.interpolate import griddata
 
 # constants
 rotatechange = 0.5
-speedchange = 0.1
+speedchange = 0.15
 back_angles = range(150, 210 + 1, 1)
 
 scanfile = 'lidar.txt'
@@ -40,11 +43,13 @@ occ_bins = [-1, 0, 100, 101]
 map_bg_color = 1
 isTargetDetected = False
 isDoneShooting = False
+nfcDetected = False
+loaded = False
 
 # To change before starting test
 stopping_time_in_seconds = 540  # 9 minutes
 #initial_direction = "Forward"  # "Front", "Left", "Right", "Back"
-follow = "Left" #"Left", "Right"
+follow = "Right" #"Left", "Right"
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
@@ -71,6 +76,21 @@ def euler_from_quaternion(x, y, z, w):
 
     return roll_x, pitch_y, yaw_z  # in radians
 
+def map_value(x, in_min, in_max, out_min, out_max):
+    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min
+
+def thermal_viz(msg):
+    MINTEMP = 25.0
+    MAXTEMP = 32.0
+    for r in range(len(msg)):
+        for p in range(len(msg[0])):
+            msg[r][p] = map_value(msg[r][p], MINTEMP, MAXTEMP, 0, 255)
+
+    #thermal_array = np.reshape(msg.data, (msg.layout.dim[0].size, msg.layout.dim[1].size))
+    img = Image.fromarray(msg)
+    plt.imshow(img, cmap='gray', origin='lower')
+    plt.draw_all()
+    plt.pause(0.00000000001)
 
 class AutoNav(Node):
 
@@ -137,6 +157,53 @@ class AutoNav(Node):
         self.laser_range = np.array([])
         self.tfBuffer = tf2_ros.Buffer()
         self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
+
+        self.nfc_subscription = self.create_subscription(
+            Bool, 
+            'nfc',
+            self.nfc_callback,
+            10
+        )
+        self.nfc_subscription
+
+        self.thermal_subscription = self.create_subscription(
+            Float32MultiArray,
+            'thermal',
+            self.thermal_callback,
+            10
+        )
+        self.thermal_subscription
+
+        self.ldr_subscription = self.create_subscription(
+            Float32,
+            'ldr',
+            self.ldr_callback,
+            10
+        )
+
+        self.thermal_points = [(math.floor(ix / 8), (ix % 8)) for ix in range(0, 64)]
+        self.thermal_grid_x, self.thermal_grid_y = np.mgrid[0:7:32j, 0:7:32j]
+
+
+    def ldr_callback(self,msg):
+        self.ldrval = msg.data
+        self.get_logger().info("LDR Value: %s"%self.ldrval)
+
+    def nfc_callback(self, msg):
+        global nfcDetected
+        self.nfc = msg.data
+        if self.nfc:
+            self.get_logger().info('NFC tag found')
+            nfcDetected = True
+
+    def thermal_callback(self, msg):
+        global isTargetDetected
+        self.thermal_array = griddata(self.thermal_points, msg.data, (self.thermal_grid_x, self.thermal_grid_y), method="cubic") 
+        self.thermal_array = np.reshape(self.thermal_array, (32, 32))
+        #self.get_logger().info('Reading Thermal Camera')
+        print(self.thermal_array)
+        thermal_viz(self.thermal_array)
+        # TODO if more than 5 cell get temp then return isTargetDetected set as true
 
     def state_estimate_callback(self, msg):
         """
@@ -207,6 +274,8 @@ class AutoNav(Node):
         np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
         self.laser_range[self.laser_range == 0] = np.nan
+
+
 
     # function to rotate the TurtleBot
 
@@ -491,7 +560,7 @@ class AutoNav(Node):
             return False
 
     def mover(self):
-        global myoccdata, isTargetDetected, isDoneShooting
+        global myoccdata, isTargetDetected, isDoneShooting, nfcDetected
         try:
             rclpy.spin_once(self)
 
@@ -537,21 +606,34 @@ class AutoNav(Node):
                         print(
                             "Specified time has passed. Automatically shutting down.")
                         break
+                    
+                    # if NFC Detected and not loaded
+                    if loaded == False and nfcDetected:
+                        self.stopbot()
+                        self.get_logger().info("Stop bot")
+                        #TODO stop to wait for loading
+
+                    # if AMG Detected Heat Signature
+                    if isTargetDetected and loaded:
+                        self.stopbot()
+                        self.get_logger().info("Stop bot")
+                        #TODO aim and fire
 
                     # while there is no target detected, keep picking direction (do wall follow)
-                    if not isTargetDetected:
+                    else:
                         self.pick_direction()
 
                     # when there is target detected, stop the bot and stop wall following logic
                     # until it finish shooting at the target.
                     # Then set isTargetDetected to False to resume the wall following logic
 
-                    else:
-                        self.stopbot()
-                        while (not isDoneShooting):
-                            print('In mover, target detected.')
-                            rclpy.spin_once(self)
-                        isTargetDetected = False
+                    # else:
+                    #     self.stopbot()
+                    #     self.get_logger().info("Stop bot")
+                    #     while (not isDoneShooting):
+                    #         print('In mover, target detected.')
+                    #         rclpy.spin_once(self)
+                    #     isTargetDetected = False
 
                 # allow the callback functions to run
                 rclpy.spin_once(self)
