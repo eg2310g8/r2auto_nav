@@ -1,6 +1,6 @@
 from setuptools import setup
 
-package_name = 'auto_nav'
+package_name = 'noob_nav'
 
 setup(
     name=package_name,
@@ -20,17 +20,13 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'r2mover = auto_nav.Original_Files.r2mover:main',
-            'r2moverotate = auto_nav.Original_Files.r2moverotate:main',
-            'r2scanner = auto_nav.Original_Files.r2scanner:main',
-            'r2occupancy = auto_nav.Original_Files.r2occupancy:main',
-            'r2occupancy2 = auto_nav.Original_Files.r2occupancy2:main',
-            'r2auto_nav = auto_nav.Partially_Working_Navigation.r2auto_nav:main',
-            'r2auto_navtrial = auto_nav.Partially_Working_Navigation.r2auto_navtrial:main',
-            'autonav = auto_nav.Partially_Working_Navigation.r2_corner_based_navigation:main',
-            'mywall = auto_nav.Partially_Working_Navigation.wall_follower_alissacopy:main',
-            'r2wallfollower = auto_nav.r2wallfollower:main',
-            'r2targeting = auto_nav.r2targeting:main',
+            'r2mover = noob_nav.Original_Files.r2mover:main',
+            'r2moverotate = noob_nav.Original_Files.r2moverotate:main',
+            'r2scanner = noob_nav.Original_Files.r2scanner:main',
+            'r2occupancy = noob_nav.Original_Files.r2occupancy:main',
+            'r2occupancy2 = noob_nav.Original_Files.r2occupancy2:main',
+            'r2wallfollower = noob_nav.r2wallfollower:main',
+            'r2targeting = noob_nav.r2targeting:main',
         ],
     },
 )

@@ -30,7 +30,7 @@ import time
 
 # constants
 rotatechange = 0.5
-speedchange = 0.15
+speedchange = 0.1
 back_angles = range(150, 210 + 1, 1)
 
 scanfile = 'lidar.txt'
@@ -43,7 +43,8 @@ isDoneShooting = False
 
 # To change before starting test
 stopping_time_in_seconds = 540  # 9 minutes
-initial_direction = "Front"  # "Front", "Left", "Right", "Back"
+#initial_direction = "Forward"  # "Front", "Left", "Right", "Back"
+follow = "Left" #"Left", "Right"
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
@@ -277,12 +278,12 @@ class AutoNav(Node):
         # Logic for following the wall
         # >d means no wall detected by that laser beam
         # <d means a wall was detected by that laser beam
-        d = 0.28  # wall distance from the robot. It will follow the right wall and maintain this distance
+        d = 0.28  # wall distance from the robot. It will follow the wall and maintain this distance
         # Set turning speeds (to the left) in rad/s
 
         # These values were determined by trial and error.
-        self.turning_speed_wf_fast = 0.75  # Fast turn ideal = 1.0
-        self.turning_speed_wf_slow = 0.40  # Slow turn = 0.50
+        self.turning_speed_wf_fast = 0.45  # Fast turn ideal = 1.0
+        self.turning_speed_wf_slow = 0.20  # Slow turn = 0.50
         # Set movement speed
         self.forward_speed = speedchange
         # Set up twist message as msg
@@ -293,53 +294,100 @@ class AutoNav(Node):
         msg.angular.x = 0.0
         msg.angular.y = 0.0
         msg.angular.z = 0.0
+        
 
         if self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist > d:
             self.wall_following_state = "search for wall"
             msg.linear.x = self.forward_speed
-            msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
+            if follow == "Right":
+                msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
+            else:
+                msg.angular.z = self.turning_speed_wf_slow  # turn left to find wall
 
         elif self.leftfront_dist > d and self.front_dist < d and self.rightfront_dist > d:
-            self.wall_following_state = "turn left"
-            msg.angular.z = self.turning_speed_wf_fast
-
-        elif (self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist < d):
-            if (self.rightfront_dist < 0.25):
-                # Getting too close to the wall
+            #msg.linear.x = 0.0
+            if follow == "Right":
                 self.wall_following_state = "turn left"
-                msg.linear.x = self.forward_speed
                 msg.angular.z = self.turning_speed_wf_fast
             else:
-                # Go straight ahead
-                self.wall_following_state = "follow wall"
+                self.wall_following_state = "turn right"
+                msg.angular.z = -self.turning_speed_wf_fast
+
+        
+        elif (self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist < d):
+            # tracing the right wall
+            if follow == "Right":
+                if (self.rightfront_dist < 0.35):
+                    # Getting too close to the wall
+                    self.wall_following_state = "turn left"
+                    msg.linear.x = self.forward_speed
+                    msg.angular.z = self.turning_speed_wf_fast
+                else:
+                    # Go straight ahead
+                    self.wall_following_state = "follow wall"
+                    msg.linear.x = self.forward_speed
+            else:
+                self.wall_following_state = "search for wall"
                 msg.linear.x = self.forward_speed
+                msg.angular.z = self.turning_speed_wf_slow  # turn left to find wall
+        
+
 
         elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist > d:
-            self.wall_following_state = "search for wall"
-            msg.linear.x = self.forward_speed
-            msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
+            # trace left wall
+            if follow == "Left":
+                if (self.leftfront_dist < 0.35):
+                    # Getting too close to the wall
+                    self.wall_following_state = "turn right"
+                    msg.linear.x = self.forward_speed
+                    msg.angular.z = -self.turning_speed_wf_fast
+                else:
+                    # Go straight ahead
+                    self.wall_following_state = "follow wall"
+                    msg.linear.x = self.forward_speed 
+
+            else:               
+                self.wall_following_state = "search for wall"
+                msg.linear.x = self.forward_speed
+                msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
 
         elif self.leftfront_dist > d and self.front_dist < d and self.rightfront_dist < d:
-            self.wall_following_state = "turn left"
-            msg.angular.z = self.turning_speed_wf_fast
+            if follow == "Right":
+                self.wall_following_state = "turn left"
+                msg.angular.z = self.turning_speed_wf_fast
+            else:
+                self.wall_following_state = "turn right"
+                msg.angular.z = -self.turning_speed_wf_fast    
 
         elif self.leftfront_dist < d and self.front_dist < d and self.rightfront_dist > d:
-            self.wall_following_state = "turn left"
-            msg.angular.z = self.turning_speed_wf_fast
+            if follow == "Right":
+                self.wall_following_state = "turn left"
+                msg.angular.z = self.turning_speed_wf_fast
+            else:
+                self.wall_following_state = "turn right"
+                msg.angular.z = -self.turning_speed_wf_fast             
 
         elif self.leftfront_dist < d and self.front_dist < d and self.rightfront_dist < d:
-            self.wall_following_state = "turn left"
-            msg.angular.z = self.turning_speed_wf_fast
+            if follow == "Right":
+                self.wall_following_state = "turn left"
+                msg.angular.z = self.turning_speed_wf_fast
+            else:
+                self.wall_following_state = "turn right"
+                msg.angular.z = -self.turning_speed_wf_fast  
 
         elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist < d:
             self.wall_following_state = "search for wall"
             msg.linear.x = self.forward_speed
-            msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
+            if follow == "Right":
+                msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
+            else:
+                msg.angular.z = self.turning_speed_wf_slow  # turn left to find wall
 
         else:
             pass
 
         # Send velocity command to the robot
+        self.get_logger().info(self.wall_following_state)
         self.publisher_.publish(msg)
 
     def stopbot(self):
@@ -351,37 +399,37 @@ class AutoNav(Node):
         # time.sleep(1)
         self.publisher_.publish(twist)
 
-    def initialmove(self):
-        self.get_logger().info('In initialmove, move backwards')
-        # publish to cmd_vel to move TurtleBot
-        if initial_direction == "Back":
-            self.get_logger().info("Going back")
-        elif initial_direction == "Right":
-            self.get_logger().info("Going right")
-            self.rotatebot(90)
-        elif initial_direction == "Left":
-            self.get_logger().info("Going right")
-            self.rotatebot(-90)
-        elif initial_direction == "Front":
-            self.get_logger().info("Going Forward")
-            self.rotatebot(180)
-        twist = Twist()
-        twist.linear.x = -speedchange
-        twist.angular.z = 0.0
-        lrback = (self.laser_range[back_angles] < float(
-            0.40)).nonzero()
-        self.publisher_.publish(twist)
-        while len(lrback[0]) <= 0:
-            time.sleep(1)
-            twist.linear.x = -speedchange
-            twist.angular.z = 0.0
-            rclpy.spin_once(self)
-            lrback = (self.laser_range[back_angles] < float(
-                0.40)).nonzero()
-            self.publisher_.publish(twist)
-        self.stopbot()
-        self.rotatebot(-90)
-        self.stopbot()
+    # def initialmove(self):
+    #     self.get_logger().info('In initialmove, move backwards')
+    #     # publish to cmd_vel to move TurtleBot
+    #     if initial_direction == "Back":
+    #         self.get_logger().info("Going back")
+    #     elif initial_direction == "Right":
+    #         self.get_logger().info("Going right")
+    #         self.rotatebot(90)
+    #     elif initial_direction == "Left":
+    #         self.get_logger().info("Going right")
+    #         self.rotatebot(-90)
+    #     elif initial_direction == "Front":
+    #         self.get_logger().info("Going Forward")
+    #         self.rotatebot(180)
+    #     twist = Twist()
+    #     twist.linear.x = -speedchange
+    #     twist.angular.z = 0.0
+    #     lrback = (self.laser_range[back_angles] < float(
+    #         0.40)).nonzero()
+    #     self.publisher_.publish(twist)
+    #     while len(lrback[0]) <= 0:
+    #         time.sleep(1)
+    #         twist.linear.x = -speedchange
+    #         twist.angular.z = 0.0
+    #         rclpy.spin_once(self)
+    #         lrback = (self.laser_range[back_angles] < float(
+    #             0.40)).nonzero()
+    #         self.publisher_.publish(twist)
+    #     self.stopbot()
+    #     self.rotatebot(-90)
+    #     self.stopbot()
 
     def closure(self):
         # This function checks if mapdata contains a closed contour. The function
@@ -455,7 +503,7 @@ class AutoNav(Node):
             start_time = time.time()
 
             # initial move to find the appropriate wall to follow
-            self.initialmove()
+            #self.initialmove()
             # start wall follow logic
             self.pick_direction()
 
