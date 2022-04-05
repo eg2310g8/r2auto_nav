@@ -366,7 +366,7 @@ class AutoNav(Node):
 
         if self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist > d:
             self.wall_following_state = "search for wall"
-            msg.linear.x = self.forward_speed
+            msg.linear.x = self.forward_speed*0.8
             if follow == "Right":
                 msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
             else:
@@ -385,15 +385,15 @@ class AutoNav(Node):
         elif (self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist < d):
             # tracing the right wall
             if follow == "Right":
-                if (self.rightfront_dist < 0.30):
+                if (self.rightfront_dist < self.d):
                     # Getting too close to the wall
                     self.wall_following_state = "turn left"
-                    msg.linear.x = self.forward_speed
+                    msg.linear.x = self.forward_speed*0.7
                     msg.angular.z = self.turning_speed_wf_fast
                 else:
                     # Go straight ahead
                     self.wall_following_state = "follow wall"
-                    msg.linear.x = self.forward_speed
+                    msg.linear.x = self.forward_speed*0.7
             else:
                 self.wall_following_state = "search for wall"
                 msg.linear.x = self.forward_speed
@@ -402,15 +402,15 @@ class AutoNav(Node):
         elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist > d:
             # trace left wall
             if follow == "Left":
-                if (self.leftfront_dist < 0.30):
+                if (self.leftfront_dist < self.d):
                     # Getting too close to the wall
                     self.wall_following_state = "turn right"
-                    msg.linear.x = self.forward_speed
+                    msg.linear.x = self.forward_speed*0.7
                     msg.angular.z = -self.turning_speed_wf_fast
                 else:
                     # Go straight ahead
                     self.wall_following_state = "follow wall"
-                    msg.linear.x = self.forward_speed 
+                    msg.linear.x = self.forward_speed *0.7
             else:               
                 self.wall_following_state = "search for wall"
                 msg.linear.x = self.forward_speed
