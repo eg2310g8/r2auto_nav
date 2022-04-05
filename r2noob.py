@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from this import d
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
@@ -184,7 +185,7 @@ class AutoNav(Node):
         # To change before starting test
         self.stopping_time_in_seconds = 540  # 9 minutes
         #initial_direction = "Forward"  # "Front", "Left", "Right", "Back"
-        self.follow = "Left" #"Left", "Right"
+        self.follow = "Right" #"Left", "Right"
         self.d = 0.35
         self.forward_speed = 0.15
         self.turning_speed_wf_fast = 0.7  # Fast turn ideal = 1.0
@@ -217,7 +218,7 @@ class AutoNav(Node):
         print(self.thermal_array)
         #thermal_viz(self.thermal_array)
         # if 15 percent of grid is heated
-        if np.count_nonzero(self.thermal_array > 30) > 160:
+        if np.count_nonzero(self.thermal_array > 30) > 160 and self.loaded:
             self.isTargetDetected = True
             self.get_logger().info("Heated Target Found")
        
@@ -366,7 +367,7 @@ class AutoNav(Node):
         if (not obs["f"]) and (not obs["l"]) and (not obs["r"]):
             self.wall_following_state = "search for wall 1"
             msg.linear.x = self.forward_speed*0.7
-            if follow == "Right":
+            if self.follow == "Right":
                msg.angular.z = -self.turning_speed_wf_fast  # turn right to find wall
             else:
                msg.angular.z = self.turning_speed_wf_fast
@@ -416,26 +417,27 @@ class AutoNav(Node):
 
         # obstacle all around robot turn slowly
         elif obs["l"] and obs["f"] and obs["r"]:
-            self.wall_following_state = "Keblakan Puseng"
-            self.rotatebot(180)
+            # right open
+            if np.nan_to_num(self.laser_range[270], copy=False, nan=100) > self.d:
+                self.wall_following_state = "D turn right"
+                self.rotatebot(-90)
+            # left open
+            elif np.nan_to_num(self.laser_range[90], copy=False, nan=100) > self.d:
+                self.wall_following_state = "D turn left"
+                self.rotatebot(90)
+            else:
+                self.wall_following_state = "Keblakan Puseng"
+                self.rotatebot(180)
         
         # obstacle front and right
         elif obs["f"] and obs["r"]:
-            if self.follow == "Right":
-                self.wall_following_state = "turn left"     
-                self.rotatebot(90)
-            else:
-                self.wall_following_state = "turn right"
-                self.rotatebot(-90)
+            self.wall_following_state = "turn left"     
+            self.rotatebot(90)
 
         #obstacle front and left        
         elif obs["f"] and obs["l"]:
-            if self.follow == "Right":
-                self.wall_following_state = "turn right"     
-                self.rotatebot(-90)
-            else:
-                self.wall_following_state = "turn left"
-                self.rotatebot(90)
+            self.wall_following_state = "turn right"     
+            self.rotatebot(-90)
 
         # if front only
         elif obs["f"]:
