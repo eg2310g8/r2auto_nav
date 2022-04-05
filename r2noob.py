@@ -41,10 +41,6 @@ mapfile = 'map.txt'
 myoccdata = np.array([])
 occ_bins = [-1, 0, 100, 101]
 map_bg_color = 1
-isTargetDetected = False
-isDoneShooting = False
-nfcDetected = False
-loaded = False
 
 # To change before starting test
 stopping_time_in_seconds = 540  # 9 minutes
@@ -179,7 +175,21 @@ class AutoNav(Node):
             self.button_callback,
             10
         )
+        
+        self.isTargetDetected = False
+        self.isDoneShooting = False
+        self.nfcDetected = False
+        self.loaded = False
 
+        # To change before starting test
+        self.stopping_time_in_seconds = 540  # 9 minutes
+        #initial_direction = "Forward"  # "Front", "Left", "Right", "Back"
+        self.follow = "Right" #"Left", "Right"
+        self.d = 0.25
+        self.forward_speed = 0.15
+        self.turning_speed_wf_fast = 0.45  # Fast turn ideal = 1.0
+        self.turning_speed_wf_slow = 0.20  # Slow turn = 0.50
+        
         self.thermal_points = [(math.floor(ix / 8), (ix % 8)) for ix in range(0, 64)]
         self.thermal_grid_x, self.thermal_grid_y = np.mgrid[0:7:32j, 0:7:32j]
 
@@ -189,21 +199,18 @@ class AutoNav(Node):
         self.get_logger().info("LDR Value: %s"%self.ldrval)
 
     def nfc_callback(self, msg):
-        global nfcDetected
         self.nfc = msg.data
         if self.nfc:
             self.get_logger().info('NFC tag found')
-            nfcDetected = True
+            self.nfcDetected = True
 
     def button_callback(self, msg):
-        global loaded
         self.load = msg.data
         if self.load:
             self.get_logger().info('Ping Pong Loaded')
-            loaded = True
+            self.loaded = True
 
     def thermal_callback(self, msg):
-        global isTargetDetected
         self.thermal_array = griddata(self.thermal_points, msg.data, (self.thermal_grid_x, self.thermal_grid_y), method="cubic") 
         self.thermal_array = np.reshape(self.thermal_array, (32, 32))
         #self.get_logger().info('Reading Thermal Camera')
@@ -211,7 +218,7 @@ class AutoNav(Node):
         #thermal_viz(self.thermal_array)
         # if 15 percent of grid is heated
         if np.count_nonzero(self.thermal_array > 30) > 160:
-            isTargetDetected = True
+            self.isTargetDetected = True
             self.get_logger().info("Heated Target Found")
        
 
@@ -273,60 +280,59 @@ class AutoNav(Node):
 
     # function to rotate the TurtleBot
 
-    def rotatebot(self, rot_angle):
-        # self.get_logger().info('In rotatebot')
-        # create Twist object
-        twist = Twist()
-
-        # get current yaw angle
-        current_yaw = self.yaw
-        # log the info
-        self.get_logger().info('Current: %f' % math.degrees(current_yaw))
-        # we are going to use complex numbers to avoid problems when the angles go from
-        # 360 to 0, or from -180 to 180
-        c_yaw = complex(math.cos(current_yaw), math.sin(current_yaw))
-        # calculate desired yaw
-        target_yaw = current_yaw + math.radians(rot_angle)
-        # convert to complex notation
-        c_target_yaw = complex(math.cos(target_yaw), math.sin(target_yaw))
-        self.get_logger().info('Desired: %f' % math.degrees(cmath.phase(c_target_yaw)))
-        # divide the two complex numbers to get the change in direction
-        c_change = c_target_yaw / c_yaw
-        # get the sign of the imaginary component to figure out which way we have to turn
-        c_change_dir = np.sign(c_change.imag)
-        # set linear speed to zero so the TurtleBot rotates on the spot
-        twist.linear.x = 0.0
-        # set the direction to rotate
-        twist.angular.z = c_change_dir * rotatechange
-        # start rotation
-        self.publisher_.publish(twist)
-
-        # we will use the c_dir_diff variable to see if we can stop rotating
-        c_dir_diff = c_change_dir
-        # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
-        # if the rotation direction was 1.0, then we will want to stop when the c_dir_diff
-        # becomes -1.0, and vice versa
-        while(c_change_dir * c_dir_diff > 0):
-            # allow the callback functions to run
-            rclpy.spin_once(self)
-            current_yaw = self.yaw
-            # convert the current yaw to complex form
-            c_yaw = complex(math.cos(current_yaw), math.sin(current_yaw))
-            # self.get_logger().info('Current Yaw: %f' % math.degrees(current_yaw))
-            # get difference in angle between current and target
-            c_change = c_target_yaw / c_yaw
-            # get the sign to see if we can stop
-            c_dir_diff = np.sign(c_change.imag)
-            # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
-
-        self.get_logger().info('End Yaw: %f' % math.degrees(current_yaw))
-        # set the rotation speed to 0
-        twist.angular.z = 0.0
-        # stop the rotation
-        self.publisher_.publish(twist)
+    #def rotatebot(self, rot_angle):
+    #    # self.get_logger().info('In rotatebot')
+    #    # create Twist object
+    #    twist = Twist()
+#
+    #    # get current yaw angle
+    #    current_yaw = self.yaw
+    #    # log the info
+    #    self.get_logger().info('Current: %f' % math.degrees(current_yaw))
+    #    # we are going to use complex numbers to avoid problems when the angles go from
+    #    # 360 to 0, or from -180 to 180
+    #    c_yaw = complex(math.cos(current_yaw), math.sin(current_yaw))
+    #    # calculate desired yaw
+    #    target_yaw = current_yaw + math.radians(rot_angle)
+    #    # convert to complex notation
+    #    c_target_yaw = complex(math.cos(target_yaw), math.sin(target_yaw))
+    #    self.get_logger().info('Desired: %f' % math.degrees(cmath.phase(c_target_yaw)))
+    #    # divide the two complex numbers to get the change in direction
+    #    c_change = c_target_yaw / c_yaw
+    #    # get the sign of the imaginary component to figure out which way we have to turn
+    #    c_change_dir = np.sign(c_change.imag)
+    #    # set linear speed to zero so the TurtleBot rotates on the spot
+    #    twist.linear.x = 0.0
+    #    # set the direction to rotate
+    #    twist.angular.z = c_change_dir * rotatechange
+    #    # start rotation
+    #    self.publisher_.publish(twist)
+#
+    #    # we will use the c_dir_diff variable to see if we can stop rotating
+    #    c_dir_diff = c_change_dir
+    #    # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
+    #    # if the rotation direction was 1.0, then we will want to stop when the c_dir_diff
+    #    # becomes -1.0, and vice versa
+    #    while(c_change_dir * c_dir_diff > 0):
+    #        # allow the callback functions to run
+    #        rclpy.spin_once(self)
+    #        current_yaw = self.yaw
+    #        # convert the current yaw to complex form
+    #        c_yaw = complex(math.cos(current_yaw), math.sin(current_yaw))
+    #        # self.get_logger().info('Current Yaw: %f' % math.degrees(current_yaw))
+    #        # get difference in angle between current and target
+    #        c_change = c_target_yaw / c_yaw
+    #        # get the sign to see if we can stop
+    #        c_dir_diff = np.sign(c_change.imag)
+    #        # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
+#
+    #    self.get_logger().info('End Yaw: %f' % math.degrees(current_yaw))
+    #    # set the rotation speed to 0
+    #    twist.angular.z = 0.0
+    #    # stop the rotation
+    #    self.publisher_.publish(twist)
 
     def pick_direction(self):
-        global follow
         self.get_logger().info('In pick direction:')
         self.front_dist = np.nan_to_num(
             self.laser_range[0], copy=False, nan=100)
@@ -339,17 +345,6 @@ class AutoNav(Node):
         self.get_logger().info('Front Left Distance: %s' % str(self.leftfront_dist))
         self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
 
-        # Logic for following the wall
-        # >d means no wall detected by that laser beam
-        # <d means a wall was detected by that laser beam
-        d = 0.30  # wall distance from the robot. It will follow the wall and maintain this distance
-        # Set turning speeds (to the left) in rad/s
-
-        # These values were determined by trial and error.
-        self.turning_speed_wf_fast = 0.45  # Fast turn ideal = 1.0
-        self.turning_speed_wf_slow = 0.20  # Slow turn = 0.50
-        # Set movement speed
-        self.forward_speed = 0.2
         # Set up twist message as msg
         msg = Twist()
         msg.linear.x = 0.0
@@ -358,102 +353,87 @@ class AutoNav(Node):
         msg.angular.x = 0.0
         msg.angular.y = 0.0
         msg.angular.z = 0.0
+
+        obs = {"l" : self.leftfront_dist < self.d, "f": self.front_dist < self.d, "r": self.rightfront_dist < self.d}
         
         if self.front_dist >= 100 or self.leftfront_dist >= 100 or self.rightfront_dist >= 100:
             self.publisher_.publish(msg)
             return
         
-
-        if self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist > d:
-            self.wall_following_state = "search for wall"
+        # no obstacle
+        if (not obs["f"]) and (not obs["l"]) and (not obs["r"]):
+            self.wall_following_state = "search for wall 1"
             msg.linear.x = self.forward_speed
             if follow == "Right":
+               msg.angular.z = -self.turning_speed_wf_fast  # turn right to find wall
+            else:
+               msg.angular.z = self.turning_speed_wf_fast
+            
+
+
+        # obstacle on left only
+        elif obs["l"] and (not obs["f"]) and (not obs["r"]):
+            self.wall_following_state = "search for wall 2"
+            msg.linear.x = self.forward_speed
+            if self.follow == "Right":
                 msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
             else:
-                msg.angular.z = self.turning_speed_wf_slow  # turn left to find wall
-
-
-        elif self.leftfront_dist > d and self.front_dist < d and self.rightfront_dist > d:
-            #msg.linear.x = 0.0
-            if follow == "Right":
-                self.wall_following_state = "turn left"
-                msg.angular.z = self.turning_speed_wf_fast
-            else:
-                self.wall_following_state = "turn right"
-                msg.angular.z = -self.turning_speed_wf_fast
-
-        elif (self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist < d):
-            # tracing the right wall
-            if follow == "Right":
-                if (self.rightfront_dist < 0.30):
-                    # Getting too close to the wall
-                    self.wall_following_state = "turn left"
-                    msg.linear.x = self.forward_speed
-                    msg.angular.z = self.turning_speed_wf_fast
-                else:
-                    # Go straight ahead
-                    self.wall_following_state = "follow wall"
-                    msg.linear.x = self.forward_speed
-            else:
-                self.wall_following_state = "search for wall"
-                msg.linear.x = self.forward_speed
-                msg.angular.z = self.turning_speed_wf_slow  # turn left to find wall
-
-        elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist > d:
-            # trace left wall
-            if follow == "Left":
+                #wall following left
                 if (self.leftfront_dist < 0.30):
                     # Getting too close to the wall
-                    self.wall_following_state = "turn right"
+                    self.wall_following_state = "turn right follow wall"
                     msg.linear.x = self.forward_speed
                     msg.angular.z = -self.turning_speed_wf_fast
                 else:
                     # Go straight ahead
                     self.wall_following_state = "follow wall"
                     msg.linear.x = self.forward_speed 
-            else:               
-                self.wall_following_state = "search for wall"
-                msg.linear.x = self.forward_speed
-                msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
 
-
-        elif self.leftfront_dist > d and self.front_dist < d and self.rightfront_dist < d:
-            if follow == "Right":
-                self.wall_following_state = "turn left"
-                msg.angular.z = self.turning_speed_wf_fast
-            else:
-                self.wall_following_state = "turn right"
-                msg.angular.z = -self.turning_speed_wf_fast   
-
-        elif self.leftfront_dist < d and self.front_dist < d and self.rightfront_dist > d:
-            if follow == "Right":
-                self.wall_following_state = "turn left"
-                msg.angular.z = self.turning_speed_wf_fast
-            else:
-                self.wall_following_state = "turn right"
-                msg.angular.z = -self.turning_speed_wf_fast 
-
-        elif self.leftfront_dist < d and self.front_dist < d and self.rightfront_dist < d:
-            if follow == "Right":
-                self.wall_following_state = "turn left"
-                self.rotatebot(-90)
-            else:
-                self.wall_following_state = "turn right"
-                self.rotatebot(90)
-
-        elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist < d:
-            self.wall_following_state = "search for wall"
+        # obstacle on right only
+        elif obs["r"] and (not obs["f"]) and (not obs["l"]):
+            self.wall_following_state = "search for wall 3"
             msg.linear.x = self.forward_speed
-            if follow == "Right":
-                msg.angular.z = self.turning_speed_wf_slow  # turn right to find wall
+            if self.follow == "Left":
+                msg.angular.z = self.turning_speed_wf_fast  # turn left to find wall
             else:
-                msg.angular.z = -self.turning_speed_wf_slow  # turn left to find wall
+                # wall following right
+                if (self.rightfront_dist < self.d):
+                    # Getting too close to the wall
+                    self.wall_following_state = "turn left follow wall"
+                    msg.linear.x = self.forward_speed
+                    msg.angular.z = self.turning_speed_wf_fast
+                else:
+                    # Go straight ahead
+                    self.wall_following_state = "follow wall"
+                    msg.linear.x = self.forward_speed 
 
-        else:
-            pass
+        # obstacle on left and right not front
+        elif obs["r"] and obs["l"] and (not obs["f"]):
+            self.wall_following_state = "move forward"
+            msg.linear.x = self.forward_speed # move forward
+
+        # obstacle all around robot turn slowly
+        elif obs["l"] and obs["f"] and obs["r"]:
+            if self.follow == "Right":
+                self.wall_following_state = "turn left"
+                msg.angular.z = self.turning_speed_wf_slow
+            else:
+                self.wall_following_state = "turn right"
+                msg.angular.z = -self.turning_speed_wf_slow
+        
+        # obstacl in front and left/right turn quickly
+        elif obs["f"]:
+            if self.follow == "Right":
+                self.wall_following_state = "turn left"     
+                msg.angular.z = self.forward_speed
+            else:
+                self.wall_following_state = "turn right no obs"
+                msg.angular.z = -self.turning_speed_wf_fast                 
 
         # Send velocity command to the robot
         self.get_logger().info(self.wall_following_state)
+        self.get_logger().info("x: %f" % msg.linear.x)
+        self.get_logger().info("z: %f" % msg.angular.z)
         self.publisher_.publish(msg)
 
     def stopbot(self):
@@ -557,7 +537,7 @@ class AutoNav(Node):
             return False
 
     def mover(self):
-        global myoccdata, isTargetDetected, isDoneShooting, nfcDetected, loaded
+        global myoccdata
         try:
             rclpy.spin_once(self)
 
@@ -605,19 +585,19 @@ class AutoNav(Node):
                         break
                     
                     # if NFC Detected and not loaded
-                    if loaded == False and nfcDetected:
+                    if self.loaded == False and self.nfcDetected:
                         self.stopbot()
                         self.get_logger().info("Stop bot")
                         # wait for button to be pressed
-                        while (not loaded):
+                        while (not self.loaded):
                             self.get_logger().info("Waiting for Button")
                             rclpy.spin_once(self)
 
                     # if AMG Detected Heat Signature
-                    if isTargetDetected and loaded:
+                    if self.isTargetDetected and self.loaded:
                         self.stopbot()
                         self.get_logger().info("Stop bot")
-                        while (not isDoneShooting):
+                        while (not self.isDoneShooting):
                             self.get_logger().info("Shooting")
                         #TODO aim and fire
 
@@ -650,7 +630,7 @@ class AutoNav(Node):
             # stop moving
             self.stopbot()
             # save map
-            cv2.imwrite('mazemapfinally.png', myoccdata)
+            #cv2.imwrite('mazemapfinally.png', myoccdata)
 
 
 def main(args=None):

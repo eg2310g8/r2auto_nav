@@ -32,8 +32,8 @@ from PIL import Image
 from scipy.interpolate import griddata
 
 # constants
-rotatechange = 0.65
-speedchange = 0.2
+rotatechange = 0.5
+speedchange = 0.25
 back_angles = range(150, 210 + 1, 1)
 
 scanfile = 'lidar.txt'
@@ -50,6 +50,8 @@ loaded = False
 stopping_time_in_seconds = 540  # 9 minutes
 #initial_direction = "Forward"  # "Front", "Left", "Right", "Back"
 follow = "Left" #"Left", "Right"
+kp = 1
+d = 0.3
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
@@ -207,8 +209,8 @@ class AutoNav(Node):
         self.thermal_array = griddata(self.thermal_points, msg.data, (self.thermal_grid_x, self.thermal_grid_y), method="cubic") 
         self.thermal_array = np.reshape(self.thermal_array, (32, 32))
         #self.get_logger().info('Reading Thermal Camera')
-        print(self.thermal_array)
-        #thermal_viz(self.thermal_array)
+        #print(self.thermal_array)
+        thermal_viz(self.thermal_array)
         # if 15 percent of grid is heated
         if np.count_nonzero(self.thermal_array > 30) > 160:
             isTargetDetected = True
@@ -228,14 +230,14 @@ class AutoNav(Node):
         self.current_yaw = curr_state[2]
 
     def odom_callback(self, msg):
-        self.get_logger().info('In odom_callback')
+        #self.get_logger().info('In odom_callback')
         orientation_quat = msg.pose.pose.orientation
         self.roll, self.pitch, self.yaw = euler_from_quaternion(
             orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
 
     def occ_callback(self, msg):
         global myoccdata
-        self.get_logger().info('In occ_callback')
+        #self.get_logger().info('In occ_callback')
         # create numpy array
         msgdata = np.array(msg.data)
         # compute histogram to identify percent of bins with -1
@@ -297,7 +299,7 @@ class AutoNav(Node):
         # set linear speed to zero so the TurtleBot rotates on the spot
         twist.linear.x = 0.0
         # set the direction to rotate
-        twist.angular.z = c_change_dir * rotatechange
+        twist.angular.z = c_change_dir * 0.5
         # start rotation
         self.publisher_.publish(twist)
 
@@ -325,31 +327,22 @@ class AutoNav(Node):
         # stop the rotation
         self.publisher_.publish(twist)
 
-    def pick_direction(self):
-        global follow
-        self.get_logger().info('In pick direction:')
+    def ptrack(self):
+        
+        self.get_logger().info('Wall Tracking:')
         self.front_dist = np.nan_to_num(
             self.laser_range[0], copy=False, nan=100)
-        self.leftfront_dist = np.nan_to_num(
-            self.laser_range[45], copy=False, nan=100)
-        self.rightfront_dist = np.nan_to_num(
-            self.laser_range[315], copy=False, nan=100)
+        self.left_dist = np.nan_to_num(
+            self.laser_range[89], copy=False, nan=100)
+        self.right_dist = np.nan_to_num(
+            self.laser_range[269], copy=False, nan=100)
 
-        self.get_logger().info('Front Distance: %s' % str(self.front_dist))
-        self.get_logger().info('Front Left Distance: %s' % str(self.leftfront_dist))
-        self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
+        #self.get_logger().info('Front Distance: %s' % str(self.front_dist))
+        #self.get_logger().info('Left Distance: %s' % str(self.left_dist))
+        #self.get_logger().info('Right Distance: %s' % str(self.right_dist))
 
-        # Logic for following the wall
-        # >d means no wall detected by that laser beam
-        # <d means a wall was detected by that laser beam
-        d = 0.30  # wall distance from the robot. It will follow the wall and maintain this distance
-        # Set turning speeds (to the left) in rad/s
 
-        # These values were determined by trial and error.
-        self.turning_speed_wf_fast = 0.45  # Fast turn ideal = 1.0
-        self.turning_speed_wf_slow = 0.20  # Slow turn = 0.50
-        # Set movement speed
-        self.forward_speed = 0.2
+        self.forward_speed = speedchange
         # Set up twist message as msg
         msg = Twist()
         msg.linear.x = 0.0
@@ -358,103 +351,30 @@ class AutoNav(Node):
         msg.angular.x = 0.0
         msg.angular.y = 0.0
         msg.angular.z = 0.0
-        
-        if self.front_dist >= 100 or self.leftfront_dist >= 100 or self.rightfront_dist >= 100:
-            self.publisher_.publish(msg)
-            return
-        
-
-        if self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist > d:
-            self.wall_following_state = "search for wall"
-            msg.linear.x = self.forward_speed
-            if follow == "Right":
-                msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
-            else:
-                msg.angular.z = self.turning_speed_wf_slow  # turn left to find wall
-
-
-        elif self.leftfront_dist > d and self.front_dist < d and self.rightfront_dist > d:
-            #msg.linear.x = 0.0
-            if follow == "Right":
-                self.wall_following_state = "turn left"
-                msg.angular.z = self.turning_speed_wf_fast
-            else:
-                self.wall_following_state = "turn right"
-                msg.angular.z = -self.turning_speed_wf_fast
-
-        elif (self.leftfront_dist > d and self.front_dist > d and self.rightfront_dist < d):
-            # tracing the right wall
-            if follow == "Right":
-                if (self.rightfront_dist < 0.30):
-                    # Getting too close to the wall
-                    self.wall_following_state = "turn left"
-                    msg.linear.x = self.forward_speed
-                    msg.angular.z = self.turning_speed_wf_fast
-                else:
-                    # Go straight ahead
-                    self.wall_following_state = "follow wall"
-                    msg.linear.x = self.forward_speed
-            else:
-                self.wall_following_state = "search for wall"
-                msg.linear.x = self.forward_speed
-                msg.angular.z = self.turning_speed_wf_slow  # turn left to find wall
-
-        elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist > d:
-            # trace left wall
+        if self.front_dist < d:
             if follow == "Left":
-                if (self.leftfront_dist < 0.30):
-                    # Getting too close to the wall
-                    self.wall_following_state = "turn right"
-                    msg.linear.x = self.forward_speed
-                    msg.angular.z = -self.turning_speed_wf_fast
-                else:
-                    # Go straight ahead
-                    self.wall_following_state = "follow wall"
-                    msg.linear.x = self.forward_speed 
-            else:               
-                self.wall_following_state = "search for wall"
-                msg.linear.x = self.forward_speed
-                msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
-
-
-        elif self.leftfront_dist > d and self.front_dist < d and self.rightfront_dist < d:
-            if follow == "Right":
-                self.wall_following_state = "turn left"
-                msg.angular.z = self.turning_speed_wf_fast
-            else:
-                self.wall_following_state = "turn right"
-                msg.angular.z = -self.turning_speed_wf_fast   
-
-        elif self.leftfront_dist < d and self.front_dist < d and self.rightfront_dist > d:
-            if follow == "Right":
-                self.wall_following_state = "turn left"
-                msg.angular.z = self.turning_speed_wf_fast
-            else:
-                self.wall_following_state = "turn right"
-                msg.angular.z = -self.turning_speed_wf_fast 
-
-        elif self.leftfront_dist < d and self.front_dist < d and self.rightfront_dist < d:
-            if follow == "Right":
-                self.wall_following_state = "turn left"
                 self.rotatebot(-90)
+                pass
             else:
-                self.wall_following_state = "turn right"
                 self.rotatebot(90)
-
-        elif self.leftfront_dist < d and self.front_dist > d and self.rightfront_dist < d:
-            self.wall_following_state = "search for wall"
-            msg.linear.x = self.forward_speed
-            if follow == "Right":
-                msg.angular.z = self.turning_speed_wf_slow  # turn right to find wall
+                pass
+        elif self.left_dist != 100 and self.right_dist != 100:
+            msg.linear.x = 0.0
+            msg.angular.z = 0.1
+            self.publisher_.publish(msg)
+            if follow == "Left":
+                error = self.left_dist - 0.3
             else:
-                msg.angular.z = -self.turning_speed_wf_slow  # turn left to find wall
+                error = -(self.right_dist - 0.3)
+            msg.angular.z = error * 5
+            self.get_logger().info('Spin Distance: %f' % msg.angular.z)
+            if msg.angular.z > 0.5:
+                msg.angular.z = 0.5
+            elif msg.angular.z < -0.5:
+                msg.angular.z = -0.5
 
-        else:
-            pass
-
-        # Send velocity command to the robot
-        self.get_logger().info(self.wall_following_state)
-        self.publisher_.publish(msg)
+            
+        
 
     def stopbot(self):
         self.get_logger().info('In stopbot')
@@ -570,8 +490,6 @@ class AutoNav(Node):
 
             # initial move to find the appropriate wall to follow
             #self.initialmove()
-            # start wall follow logic
-            self.pick_direction()
 
             while rclpy.ok():
                 if self.laser_range.size != 0:
@@ -623,7 +541,7 @@ class AutoNav(Node):
 
                     # while there is no target detected, keep picking direction (do wall follow)
                     else:
-                        self.pick_direction()
+                        self.ptrack()
 
                     # when there is target detected, stop the bot and stop wall following logic
                     # until it finish shooting at the target.
