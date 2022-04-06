@@ -193,6 +193,7 @@ class AutoNav(Node):
         
         self.thermal_points = [(math.floor(ix / 8), (ix % 8)) for ix in range(0, 64)]
         self.thermal_grid_x, self.thermal_grid_y = np.mgrid[0:7:32j, 0:7:32j]
+        self.oldval = {"l" : 0.3, "f": 0.5, "r":0.3}
 
 
     def ldr_callback(self,msg):
@@ -281,7 +282,7 @@ class AutoNav(Node):
 
     # function to rotate the TurtleBot
 
-    def rotatebot(self, rot_angle):
+    def rotatebot(self, rot_angle, x):
        # self.get_logger().info('In rotatebot')
        # create Twist object
        twist = Twist()
@@ -303,7 +304,7 @@ class AutoNav(Node):
        # get the sign of the imaginary component to figure out which way we have to turn
        c_change_dir = np.sign(c_change.imag)
        # set linear speed to zero so the TurtleBot rotates on the spot
-       twist.linear.x = 0.0
+       twist.linear.x = x
        # set the direction to rotate
        twist.angular.z = c_change_dir * rotatechange
        # start rotation
@@ -357,20 +358,26 @@ class AutoNav(Node):
 
         obs = {"l" : self.leftfront_dist < self.d, "f": self.front_dist < self.d, "r": self.rightfront_dist < self.d}
         
-        if self.front_dist >= 100 or self.leftfront_dist >= 100 or self.rightfront_dist >= 100:
-            self.get_logger().info("x: %f" % msg.linear.x)
-            self.get_logger().info("Stop")
-            self.publisher_.publish(msg)
-            return
+        if self.front_dist >= 100:
+            self.front_dist = self.oldval["f"]
+        
+        if self.leftfront_dist >= 100: 
+            self.leftfront_dist = self.oldval["l"]
+            
+        if self.rightfront_dist >= 100:
+            self.rightfront_dist = self.oldval["r"]
+
         
         # no obstacle
         if (not obs["f"]) and (not obs["l"]) and (not obs["r"]):
             self.wall_following_state = "search for wall 1"
             msg.linear.x = self.forward_speed*0.7
             if self.follow == "Right":
-               msg.angular.z = -self.turning_speed_wf_fast  # turn right to find wall
+                if np.nan_to_num(self.laser_range[225], copy=False, nan=100) > 0.15:
+                    msg.angular.z = -self.turning_speed_wf_fast  # turn right to find wall
             else:
-               msg.angular.z = self.turning_speed_wf_fast
+                if np.nan_to_num(self.laser_range[135], copy=False, nan=100) > 0.15:
+                    msg.angular.z = self.turning_speed_wf_fast
             
 
 
@@ -379,14 +386,15 @@ class AutoNav(Node):
             if self.follow == "Right":
                 self.wall_following_state = "search for wall 2"
                 msg.linear.x = self.forward_speed
-                msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
+                if np.nan_to_num(self.laser_range[225], copy=False, nan=100) > 0.15:
+                    msg.angular.z = -self.turning_speed_wf_slow  # turn right to find wall
             else:
                 #wall following left
                 if (self.leftfront_dist < self.d):
                     # Getting too close to the wall
                     self.wall_following_state = "turn right follow wall"
                     msg.linear.x = self.forward_speed*0.7
-                    msg.angular.z = -self.turning_speed_wf_fast
+                    msg.angular.z = -self.turning_speed_wf_slow
                 else:
                     # Go straight ahead
                     self.wall_following_state = "follow wall"
@@ -396,15 +404,17 @@ class AutoNav(Node):
         elif obs["r"] and (not obs["f"]) and (not obs["l"]):           
             if self.follow == "Left":
                 self.wall_following_state = "search for wall 3"
-                msg.angular.z = self.turning_speed_wf_fast  # turn left to find wall
                 msg.linear.x = self.forward_speed
+                if np.nan_to_num(self.laser_range[135], copy=False, nan=100) > 0.15:
+                    msg.angular.z = self.turning_speed_wf_fast
+
             else:
                 # wall following right
                 if (self.rightfront_dist < self.d):
                     # Getting too close to the wall
                     self.wall_following_state = "turn left follow wall"
                     msg.linear.x = self.forward_speed*0.7
-                    msg.angular.z = self.turning_speed_wf_fast
+                    msg.angular.z = self.turning_speed_wf_slow
                 else:
                     # Go straight ahead
                     self.wall_following_state = "follow wall"
@@ -420,39 +430,43 @@ class AutoNav(Node):
             # right open
             if np.nan_to_num(self.laser_range[270], copy=False, nan=100) > self.d:
                 self.wall_following_state = "D turn right"
-                self.rotatebot(-90)
+                self.rotatebot(-90,0.03)
             # left open
             elif np.nan_to_num(self.laser_range[90], copy=False, nan=100) > self.d:
                 self.wall_following_state = "D turn left"
-                self.rotatebot(90)
+                self.rotatebot(90,0.03)
             else:
                 self.wall_following_state = "Keblakan Puseng"
-                self.rotatebot(180)
+                self.rotatebot(180,0)
         
         # obstacle front and right
         elif obs["f"] and obs["r"]:
             self.wall_following_state = "turn left"     
-            self.rotatebot(90)
+            self.rotatebot(90,0.07)
 
         #obstacle front and left        
         elif obs["f"] and obs["l"]:
             self.wall_following_state = "turn right"     
-            self.rotatebot(-90)
+            self.rotatebot(-90,0.07)
+
 
         # if front only
         elif obs["f"]:
             if self.follow == "Right":
                 self.wall_following_state = "turn left"     
-                self.rotatebot(90)
+                self.rotatebot(90,0.07)
             else:
                 self.wall_following_state = "turn right"
-                self.rotatebot(-90)
+                self.rotatebot(-90,0.07)
 
 
         # Send velocity command to the robot
         self.get_logger().info(self.wall_following_state)
         self.get_logger().info("x: %f" % msg.linear.x)
         self.get_logger().info("z: %f" % msg.angular.z)
+        self.oldval["l"] = self.leftfront_dist
+        self.oldval["f"] = self.front_dist
+        self.oldval["r"] = self.rightfront_dist
         self.publisher_.publish(msg)
 
     def stopbot(self):
