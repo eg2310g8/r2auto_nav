@@ -169,13 +169,6 @@ class AutoNav(Node):
             self.ldr_callback,
             10
         )
-
-        self.button_subscription = self.create_subscription(
-            Bool,
-            'button',
-            self.button_callback,
-            10
-        )
         
         self.isTargetDetected = False
         self.isDoneShooting = False
@@ -186,31 +179,35 @@ class AutoNav(Node):
         self.stopping_time_in_seconds = 540  # 9 minutes
         #initial_direction = "Forward"  # "Front", "Left", "Right", "Back"
         self.follow = "Left" #"Left", "Right"
-        self.d = 0.35
+
+        # TODO upate
+        self.d = 0.30
         self.forward_speed = 0.15
-        self.turning_speed_wf_fast = 0.7  # Fast turn ideal = 1.0
-        self.turning_speed_wf_slow = 0.35  # Slow turn = 0.50
-        
+        self.k_theta = 0.07
+        self.k_diff = 200
+
         self.thermal_points = [(math.floor(ix / 8), (ix % 8)) for ix in range(0, 64)]
         self.thermal_grid_x, self.thermal_grid_y = np.mgrid[0:7:32j, 0:7:32j]
         self.oldval = {"lf" : 0.3, "f": 0.5, "rf":0.3, "l": 0.21 ,"r": 0.21}
+        self.front_dist = 0
+        self.leftfront_dist = 0
+        self.rightfront_dist = 0
+        self.left_dist = 0
+        self.right_dist = 0
+
 
 
     def ldr_callback(self,msg):
         self.ldrval = msg.data
         self.get_logger().info("LDR Value: %s"%self.ldrval)
+        if self.ldrval > 0.77:
+            self.loaded = True
 
     def nfc_callback(self, msg):
         self.nfc = msg.data
         if self.nfc:
             self.get_logger().info('NFC tag found')
             self.nfcDetected = True
-
-    def button_callback(self, msg):
-        self.load = msg.data
-        if self.load:
-            self.get_logger().info('Ping Pong Loaded')
-            self.loaded = True
 
     def thermal_callback(self, msg):
         self.thermal_array = griddata(self.thermal_points, msg.data, (self.thermal_grid_x, self.thermal_grid_y), method="cubic") 
@@ -277,6 +274,20 @@ class AutoNav(Node):
         np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
         self.laser_range[self.laser_range == 0] = np.nan
+        if self.front_dist == np.nan:
+            self.front_dist = self.oldval["f"]
+        
+        if self.leftfront_dist == np.nan:
+            self.leftfront_dist = self.oldval["lf"]
+            
+        if self.rightfront_dist == np.nan:
+            self.rightfront_dist = self.oldval["rf"]
+
+        if self.left_dist == np.nan:
+            self.left_dist = self.oldval["l"]
+            
+        if self.right_dist == np.nan:
+            self.right_dist = self.oldval["r"]
 
 
 
@@ -344,24 +355,6 @@ class AutoNav(Node):
         self.rightfront_dist = np.nan_to_num(self.laser_range[315], copy=False, nan=100)
         self.right_dist = np.nan_to_num(self.laser_range[270], copy=False, nan=100)
 
-        if self.front_dist >= 100:
-            self.front_dist = self.oldval["f"]
-        
-        if self.leftfront_dist >= 100: 
-            self.leftfront_dist = self.oldval["lf"]
-            
-        if self.rightfront_dist >= 100:
-            self.rightfront_dist = self.oldval["rf"]
-
-        if self.front_dist >= 100:
-            self.front_dist = self.oldval["f"]
-
-        if self.left_dist >= 100: 
-            self.left_dist = self.oldval["l"]
-            
-        if self.right_dist >= 100:
-            self.right_dist = self.oldval["r"]
-
         if self.follow == "Right":
             self.get_logger().info('Front Distance: %s' % str(self.front_dist))
             self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
@@ -385,14 +378,11 @@ class AutoNav(Node):
             if self.leftfront_dist < self.d and self.rightfront_dist < self.d:
                 # right open
                 if np.nan_to_num(self.laser_range[270], copy=False, nan=100) > self.d:
-                    self.wall_following_state = "D turn right"
                     self.rotatebot(-90,0.03)
                 # left open
-                elif np.nan_to_num(self.laser_range[90], copy=False, nan=100) > self.d:
-                    self.wall_following_state = "D turn left"
+                elif np.nan_to_num(self.laser_range[90], copy=False, nan=100) > self.d:   
                     self.rotatebot(90,0.03)
                 else:
-                    self.wall_following_state = "Keblakan Puseng"
                     self.rotatebot(180,0)
             # if front and right got obstacle
             elif self.rightfront_dist < self.d:
@@ -402,11 +392,9 @@ class AutoNav(Node):
 
             # if front only
             else:
-                if self.follow == "Right":
-                    self.wall_following_state = "turn left"     
+                if self.follow == "Right":     
                     self.rotatebot(90,0.07)
                 else:
-                    self.wall_following_state = "turn right"
                     self.rotatebot(-90,0.07)
 
 
@@ -416,25 +404,44 @@ class AutoNav(Node):
 
 
         else:
+            if self.follow == "Left":
+                leftside = self.laser_range[45:91]
+                mind = np.nanmin(leftside)
+                
+            else:
+                rightside = self.laser_range[225:271]
+                mind = np.nanmin(rightside)
+                
+            self.get_logger().info('Min Distance: %s' % str(mind))
+            
+
             if self.follow == "Right":
                 d1 = self.rightfront_dist
-                x = self.right_dist
+                d0 = self.right_dist
             else:
                 d1 = self.leftfront_dist
-                x = self.left_dist
+                d0 = self.left_dist
 
             
-            desire = ((d1*math.sin(math.radians(45)))/math.tan(math.radians(45))) - x
+            height = d1*math.sin(math.radians(45))
+            proj = (height/math.tan(math.radians(45))) 
+            width = proj - d0
+            theta = math.degrees(math.atan2(width,height))
+            print(theta)
 
-            # desire negative need turn away
-            if self.follow == "Left":
-                msg.angular.z = desire*5
+
+            if self.follow =="Right":
+                theta = -theta # to confirm and figure out whats going on
+                msg.angular.z = (theta + (0.2-mind)*self.k_diff)*self.k_theta
             else:
-                msg.angular.z = -desire*5
+                
+                msg.angular.z = (theta + (mind-0.2)*self.k_diff)*self.k_theta
 
             msg.linear.x = 0.1
-
-            print(d1)
+            if msg.angular.z > 0.45:
+                msg.angular.z = 0.45
+            if msg.angular.z < -0.45:
+                msg.angular.z = -0.45
 
 
         # Send velocity command to the robot
