@@ -185,7 +185,7 @@ class AutoNav(Node):
         # To change before starting test
         self.stopping_time_in_seconds = 540  # 9 minutes
         #initial_direction = "Forward"  # "Front", "Left", "Right", "Back"
-        self.follow = "Right" #"Left", "Right"
+        self.follow = "Left" #"Left", "Right"
         self.d = 0.35
         self.forward_speed = 0.15
         self.turning_speed_wf_fast = 0.7  # Fast turn ideal = 1.0
@@ -193,7 +193,7 @@ class AutoNav(Node):
         
         self.thermal_points = [(math.floor(ix / 8), (ix % 8)) for ix in range(0, 64)]
         self.thermal_grid_x, self.thermal_grid_y = np.mgrid[0:7:32j, 0:7:32j]
-        self.oldval = {"l" : 0.3, "f": 0.5, "r":0.3}
+        self.oldval = {"lf" : 0.3, "f": 0.5, "rf":0.3, "l": 0.21 ,"r": 0.21}
 
 
     def ldr_callback(self,msg):
@@ -336,16 +336,40 @@ class AutoNav(Node):
 
     def pick_direction(self):
         self.get_logger().info('In pick direction:')
-        self.front_dist = np.nan_to_num(
-            self.laser_range[0], copy=False, nan=100)
-        self.leftfront_dist = np.nan_to_num(
-            self.laser_range[45], copy=False, nan=100)
-        self.rightfront_dist = np.nan_to_num(
-            self.laser_range[315], copy=False, nan=100)
+        self.front_dist = np.nan_to_num(self.laser_range[0], copy=False, nan=100)
+        
+        self.leftfront_dist = np.nan_to_num(self.laser_range[45], copy=False, nan=100)
+        self.left_dist = np.nan_to_num(self.laser_range[90], copy=False, nan=100)
 
-        self.get_logger().info('Front Distance: %s' % str(self.front_dist))
-        self.get_logger().info('Front Left Distance: %s' % str(self.leftfront_dist))
-        self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
+        self.rightfront_dist = np.nan_to_num(self.laser_range[315], copy=False, nan=100)
+        self.right_dist = np.nan_to_num(self.laser_range[270], copy=False, nan=100)
+
+        if self.front_dist >= 100:
+            self.front_dist = self.oldval["f"]
+        
+        if self.leftfront_dist >= 100: 
+            self.leftfront_dist = self.oldval["lf"]
+            
+        if self.rightfront_dist >= 100:
+            self.rightfront_dist = self.oldval["rf"]
+
+        if self.front_dist >= 100:
+            self.front_dist = self.oldval["f"]
+
+        if self.left_dist >= 100: 
+            self.left_dist = self.oldval["l"]
+            
+        if self.right_dist >= 100:
+            self.right_dist = self.oldval["r"]
+
+        if self.follow == "Right":
+            self.get_logger().info('Front Distance: %s' % str(self.front_dist))
+            self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
+            self.get_logger().info('Right Distance: %s' % str(self.right_dist))
+        else:
+            self.get_logger().info('Front Distance: %s' % str(self.front_dist))
+            self.get_logger().info('Front Left Distance: %s' % str(self.leftfront_dist))
+            self.get_logger().info('Left Distance: %s' % str(self.left_dist))           
 
         # Set up twist message as msg
         msg = Twist()
@@ -356,13 +380,71 @@ class AutoNav(Node):
         msg.angular.y = 0.0
         msg.angular.z = 0.0
 
+        if self.front_dist < self.d:
+            # front and left and right got obsacle
+            if self.leftfront_dist < self.d and self.rightfront_dist < self.d:
+                # right open
+                if np.nan_to_num(self.laser_range[270], copy=False, nan=100) > self.d:
+                    self.wall_following_state = "D turn right"
+                    self.rotatebot(-90,0.03)
+                # left open
+                elif np.nan_to_num(self.laser_range[90], copy=False, nan=100) > self.d:
+                    self.wall_following_state = "D turn left"
+                    self.rotatebot(90,0.03)
+                else:
+                    self.wall_following_state = "Keblakan Puseng"
+                    self.rotatebot(180,0)
+            # if front and right got obstacle
+            elif self.rightfront_dist < self.d:
+                self.rotatebot(90,0.07)
+            elif self.leftfront_dist < self.d:
+                self.rotatebot(-90,0.07)
+
+            # if front only
+            else:
+                if self.follow == "Right":
+                    self.wall_following_state = "turn left"     
+                    self.rotatebot(90,0.07)
+                else:
+                    self.wall_following_state = "turn right"
+                    self.rotatebot(-90,0.07)
+
+
+            self.get_logger().info('Front Distance: %s' % str(self.front_dist))
+            self.get_logger().info('Front Left Distance: %s' % str(self.leftfront_dist))
+            self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
+
+
+        else:
+            if self.follow == "Right":
+                d1 = self.rightfront_dist
+                x = self.right_dist
+            else:
+                d1 = self.leftfront_dist
+                x = self.left_dist
+
+            
+            desire = ((d1*math.sin(math.radians(45)))/math.tan(math.radians(45))) - x
+
+            # desire negative need turn away
+            if self.follow == "Left":
+                msg.angular.z = desire*5
+            else:
+                msg.angular.z = -desire*5
+
+            msg.linear.x = 0.1
+
+            print(d1)
+
+
         # Send velocity command to the robot
-        self.get_logger().info(self.wall_following_state)
         self.get_logger().info("x: %f" % msg.linear.x)
         self.get_logger().info("z: %f" % msg.angular.z)
-        self.oldval["l"] = self.leftfront_dist
+        self.oldval["lf"] = self.leftfront_dist
         self.oldval["f"] = self.front_dist
-        self.oldval["r"] = self.rightfront_dist
+        self.oldval["rf"] = self.rightfront_dist
+        self.oldval["r"] = self.right_dist
+        self.oldval["l"] = self.left_dist
         self.publisher_.publish(msg)
 
     def stopbot(self):
