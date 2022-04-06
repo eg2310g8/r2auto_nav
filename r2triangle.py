@@ -20,7 +20,7 @@ from geometry_msgs.msg import Twist
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
-from std_msgs.msg import Float64MultiArray, String, Bool, Float32MultiArray,Float32
+from std_msgs.msg import Float64MultiArray, String, Bool, Float32MultiArray,Float32, Int8
 import numpy as np
 import tf2_ros
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
@@ -146,6 +146,7 @@ class AutoNav(Node):
         self.laser_range = np.array([])
         self.tfBuffer = tf2_ros.Buffer()
         self.tfListener = tf2_ros.TransformListener(self.tfBuffer, self)
+        self.shoot_publisher = self.create_publisher(Int8, 'shoot', 10)
 
         self.nfc_subscription = self.create_subscription(
             Bool, 
@@ -195,6 +196,11 @@ class AutoNav(Node):
         self.left_dist = 0
         self.right_dist = 0
 
+        self.shot = False
+        self.turn_left = False
+        self.turn_right = False
+        self.forward = False
+
 
 
     def ldr_callback(self,msg):
@@ -214,11 +220,42 @@ class AutoNav(Node):
         self.thermal_array = np.reshape(self.thermal_array, (32, 32))
         #self.get_logger().info('Reading Thermal Camera')
         print(self.thermal_array)
-        #thermal_viz(self.thermal_array)
+        thermal_viz(self.thermal_array)
         # if 15 percent of grid is heated
-        if np.count_nonzero(self.thermal_array > 30) > 160 and self.loaded:
+        #if np.count_nonzero(self.thermal_array > 30) > 160 and self.loaded:
+        #    self.isTargetDetected = True
+        #    self.get_logger().info("Heated Target Found")
+        midpoint = [0, 0]
+        heat_points = 0
+        for row in range(len(self.thermal_array)):
+            for col in range(len(self.thermal_array[0])):
+                if self.thermal_array[row][col] > 33:
+                    midpoint[0] += row
+                    midpoint[1] += col
+                    heat_points += 1
+        if heat_points > 0:
             self.isTargetDetected = True
-            self.get_logger().info("Heated Target Found")
+            midpoint[0] /= heat_points
+            midpoint[1] /= heat_points
+            if midpoint[1] > 17:
+                self.turn_left = True
+                self.turn_right = False
+                self.forward = False
+                self.get_logger().info("turn left")
+            elif midpoint[1] < 15:
+                self.turn_left = False
+                self.turn_right = True
+                self.forward = False
+                self.get_logger().info("turn right")
+            else:
+                self.turn_left = False
+                self.turn_right = False
+                self.forward = True
+                self.get_logger().info("forward")
+        else:
+            self.turn_right = False
+            self.turn_left = False
+            self.forward = False
        
 
     def state_estimate_callback(self, msg):
@@ -293,7 +330,7 @@ class AutoNav(Node):
 
     # function to rotate the TurtleBot
 
-    def rotatebot(self, rot_angle, x):
+    def rotatebot(self, rot_angle, x, angular=rotatechange):
        # self.get_logger().info('In rotatebot')
        # create Twist object
        twist = Twist()
@@ -317,7 +354,7 @@ class AutoNav(Node):
        # set linear speed to zero so the TurtleBot rotates on the spot
        twist.linear.x = x
        # set the direction to rotate
-       twist.angular.z = c_change_dir * rotatechange
+       twist.angular.z = c_change_dir * angular
        # start rotation
        self.publisher_.publish(twist)
 
@@ -521,11 +558,45 @@ class AutoNav(Node):
                             rclpy.spin_once(self)
 
                     # if AMG Detected Heat Signature
-                    if self.isTargetDetected and self.loaded:
-                        self.stopbot()
+                    if self.isTargetDetected and self.loaded: # add check for loaded
+                        #self.stopbot()
                         self.get_logger().info("Stop bot")
-                        while (not self.isDoneShooting):
-                            self.get_logger().info("Shooting")
+                                        # allow the callback functions to run
+
+                        if not self.shot:
+                            if self.turn_left:
+                               self.rotatebot(float(1), 0.0, 0.1)
+                            elif self.turn_right:
+                                self.rotatebot(float(-1), 0.0, 0.1)
+                            elif self.forward:
+                                while self.laser_range[0] == 0:
+                                    rclpy.spin_once(self)
+                                if self.laser_range[0]>0.45:
+                                    twist = Twist()
+                                    twist.linear.x = 0.2
+                                    twist.angular.z = 0.0
+                                    self.publisher_.publish(twist)
+                                else:
+                                    spd = Int8()
+                                    spd.data = 40
+                                    self.rotatebot(84, 0.0, 0.25)
+                                    self.shoot_dist = []
+                                    while rclpy.ok():
+                                        if len(self.shoot_dist)==0:
+                                            if (self.laser_range[0] == 0 or self.laser_range[179] == 0):
+                                                continue
+                                            else:
+                                                self.shoot_dist = [self.laser_range[0], self.laser_range[179]]
+                                        if (self.laser_range[0] != 0 and self.shoot_dist[0] - 0.07 > self.laser_range[0]) or (self.laser_range[179] != 0  and self.shoot_dist[1] - 0.07 > self.laser_range[179]):
+                                            break
+                                        twist.linear.x = 0.05
+                                        twist.angular.z = 0.0
+                                        self.publisher_.publish(twist)
+                                        rclpy.spin_once(self)
+                                    self.stopbot()
+                                    self.shoot_publisher.publish(spd)
+                                    self.shot = True
+
                         #TODO aim and fire
 
                     # while there is no target detected, keep picking direction (do wall follow)
@@ -543,8 +614,6 @@ class AutoNav(Node):
                     #         print('In mover, target detected.')
                     #         rclpy.spin_once(self)
                     #     isTargetDetected = False
-
-                # allow the callback functions to run
                 rclpy.spin_once(self)
         except KeyboardInterrupt:
             self.stopbot()
