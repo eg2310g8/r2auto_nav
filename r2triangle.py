@@ -220,7 +220,7 @@ class AutoNav(Node):
         self.thermal_array = griddata(self.thermal_points, msg.data, (self.thermal_grid_x, self.thermal_grid_y), method="cubic") 
         self.thermal_array = np.reshape(self.thermal_array, (32, 32))
         #self.get_logger().info('Reading Thermal Camera')
-        thermal_viz(self.thermal_array)
+        #thermal_viz(self.thermal_array)
         # if 15 percent of grid is heated
         #if np.count_nonzero(self.thermal_array > 30) > 160 and self.loaded:
         #    self.isTargetDetected = True
