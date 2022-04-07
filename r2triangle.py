@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from asyncio.format_helpers import _format_callback_source
 from this import d
 import rclpy
 from rclpy.node import Node
@@ -182,10 +183,10 @@ class AutoNav(Node):
         self.follow = "Left" #"Left", "Right"
 
         # TODO upate
-        self.d = 0.30
+        self.d = 0.35
         self.forward_speed = 0.15
         self.k_theta = 0.07
-        self.k_diff = 200
+        self.k_diff = 250
 
         self.thermal_points = [(math.floor(ix / 8), (ix % 8)) for ix in range(0, 64)]
         self.thermal_grid_x, self.thermal_grid_y = np.mgrid[0:7:32j, 0:7:32j]
@@ -219,7 +220,6 @@ class AutoNav(Node):
         self.thermal_array = griddata(self.thermal_points, msg.data, (self.thermal_grid_x, self.thermal_grid_y), method="cubic") 
         self.thermal_array = np.reshape(self.thermal_array, (32, 32))
         #self.get_logger().info('Reading Thermal Camera')
-        print(self.thermal_array)
         thermal_viz(self.thermal_array)
         # if 15 percent of grid is heated
         #if np.count_nonzero(self.thermal_array > 30) > 160 and self.loaded:
@@ -256,6 +256,7 @@ class AutoNav(Node):
             self.turn_right = False
             self.turn_left = False
             self.forward = False
+            self.isTargetDetected = False
        
 
     def state_estimate_callback(self, msg):
@@ -311,20 +312,21 @@ class AutoNav(Node):
         np.savetxt(scanfile, self.laser_range)
         # replace 0's with nan
         self.laser_range[self.laser_range == 0] = np.nan
-        if self.front_dist == np.nan:
+        if self.front_dist == np.nan or self.front_dist == 100:
             self.front_dist = self.oldval["f"]
         
-        if self.leftfront_dist == np.nan:
+        if self.leftfront_dist == np.nan or self.leftfront_dist == 100:
             self.leftfront_dist = self.oldval["lf"]
             
-        if self.rightfront_dist == np.nan:
+        if self.rightfront_dist == np.nan or self.rightfront_dist == 100:
             self.rightfront_dist = self.oldval["rf"]
 
-        if self.left_dist == np.nan:
+        if self.left_dist == np.nan or self.left_dist == 100:
             self.left_dist = self.oldval["l"]
             
-        if self.right_dist == np.nan:
+        if self.right_dist == np.nan or self.right_dist == 100:
             self.right_dist = self.oldval["r"]
+
 
 
 
@@ -410,29 +412,121 @@ class AutoNav(Node):
         msg.angular.y = 0.0
         msg.angular.z = 0.0
 
-        if self.front_dist < self.d:
+        if self.front_dist == np.nan or self.front_dist == 100:
+            self.front_dist = self.oldval["f"]
+        
+        if self.leftfront_dist == np.nan or self.leftfront_dist == 100:
+            self.leftfront_dist = self.oldval["lf"]
+            
+        if self.rightfront_dist == np.nan or self.rightfront_dist == 100:
+            self.rightfront_dist = self.oldval["rf"]
+
+        if self.left_dist == np.nan or self.left_dist == 100:
+            self.left_dist = self.oldval["l"]
+            
+        if self.right_dist == np.nan or self.right_dist == 100:
+            self.right_dist = self.oldval["r"]
+
+        if self.follow == "Right":
+            d1 = self.rightfront_dist
+            d0 = self.right_dist
+        else:
+            d1 = self.leftfront_dist
+            d0 = self.left_dist
+
+
+        if (self.front_dist > 0.5 and self.right_dist > 0.5 and self.left_dist > 0.5) or (self.follow == "Right" and self.right_dist > 0.7) or  (self.follow == "Left" and self.left_dist > 0.7):
+            if self.follow == "Right" and (np.nanmin(self.laser_range[180:271]) < self.d):
+                # msg.linear.x = 0.05
+                # msg.angular.z = -0.4
+                # self.publisher_.publish(msg)
+                self.rotatebot(-45,0.03)
+                return
+
+            elif self.follow == "Left" and (np.nanmin(self.laser_range[90:181]) < self.d):
+                # msg.linear.x = 0.05
+                # msg.angular.z = 0.4
+                # self.publisher_.publish(msg)
+                self.rotatebot(45,0.03)
+                return
+
+        height = d1*math.sin(math.radians(45))
+        proj = (height/math.tan(math.radians(45))) 
+        width = proj - d0
+        theta = math.degrees(math.atan2(width,height))
+        if self.follow == "Right":
+            doffset = -round(theta)
+        else:
+            doffset = round(theta)
+
+        # if front right very far then can ignore offset
+        if d1 > 0.7:
+            doffset = 0
+
+        # frontmind = np.nanmin(self.laser_range[doffset+10:doffset-10:-1])
+        print(doffset)
+        if doffset - 15 < 0:
+            if doffset + 15 > 0:
+                frontmind = np.nanmin(np.append(self.laser_range[0:15+doffset],self.laser_range[doffset-15+360:360]))
+                print(0,15+doffset,doffset-15+360,360)
+            else:
+                frontmind = np.nanmin(self.laser_range[doffset-15+360:doffset+15+360])
+                print(doffset-15+360,doffset+15+360)
+        else:
+            frontmind = np.nanmin(self.laser_range[doffset-15:doffset+15])
+            print(doffset-15,doffset+15)
+        
+        print("frontmind",frontmind)
+
+        if frontmind < 0.35:
+
             # front and left and right got obsacle
             if self.leftfront_dist < self.d and self.rightfront_dist < self.d:
-                # right open
-                if np.nan_to_num(self.laser_range[270], copy=False, nan=100) > self.d:
-                    self.rotatebot(-90,0.03)
-                # left open
-                elif np.nan_to_num(self.laser_range[90], copy=False, nan=100) > self.d:   
-                    self.rotatebot(90,0.03)
+                frontdist = np.append(self.laser_range[20:-1:-1],self.laser_range[359:339:-1])
+                minfront = np.nanargmin(frontdist)
+                
+                if self.follow == "Right":
+                    print('right')
+                    sidedist = self.laser_range[315:214:-1]
+                    sidemin = np.nanargmin(sidedist)
+                    print(sidemin)
+                    angle = (40-minfront) + 25 + sidemin
+                    print(type(angle))
+                    self.get_logger().info('Angle: %i' % angle)
+                    if angle > 90:
+                        self.rotatebot((180-angle)*0.9,0.0,0.45)
+                    else:
+                        self.rotatebot(90,0.02) 
+
                 else:
-                    self.rotatebot(180,0)
-            # if front and right got obstacle
+                    sidedist = self.laser_range[45:176]
+                    sidemin = np.nanargmin(sidedist)
+                    angle = minfront + 25 + sidemin
+                    self.get_logger().info('Angle: %i' % angle)
+                    if angle > 90:
+                        self.rotatebot((angle-180)*0.9,0.0,0.45)
+                    else:
+                        self.rotatebot(-90,0.02)
+
+
+            # # if front and right got obstacle
             elif self.rightfront_dist < self.d:
-                self.rotatebot(90,0.07)
+                if self.follow == "Right":
+                    self.rotatebot(90,0.0)
+                else:
+                    self.rotatebot(-90,0.0)
             elif self.leftfront_dist < self.d:
-                self.rotatebot(-90,0.07)
+                if self.follow == "Left":
+                    self.rotatebot(-90,0.0)
+                else:
+                    self.rotatebot(90,0.0)
 
             # if front only
             else:
                 if self.follow == "Right":     
-                    self.rotatebot(90,0.07)
+                    self.rotatebot(90,0.0)
                 else:
-                    self.rotatebot(-90,0.07)
+                    self.rotatebot(-90,0.0)
 
 
             self.get_logger().info('Front Distance: %s' % str(self.front_dist))
@@ -440,41 +534,69 @@ class AutoNav(Node):
             self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
 
 
+        
+            
+
         else:
+
             if self.follow == "Left":
                 leftside = self.laser_range[45:91]
                 mind = np.nanmin(leftside)
                 
             else:
-                rightside = self.laser_range[225:271]
+                rightside = self.laser_range[270:291]
                 mind = np.nanmin(rightside)
                 
             self.get_logger().info('Min Distance: %s' % str(mind))
             
 
-            if self.follow == "Right":
-                d1 = self.rightfront_dist
-                d0 = self.right_dist
-            else:
-                d1 = self.leftfront_dist
-                d0 = self.left_dist
-
             
-            height = d1*math.sin(math.radians(45))
-            proj = (height/math.tan(math.radians(45))) 
-            width = proj - d0
-            theta = math.degrees(math.atan2(width,height))
-            print(theta)
-
+            self.k_diff = 250
+            self.k_theta = 0.02
 
             if self.follow =="Right":
                 theta = -theta # to confirm and figure out whats going on
-                msg.angular.z = (theta + (0.2-mind)*self.k_diff)*self.k_theta
+                msg.angular.z = (theta + (0.25-mind)*self.k_diff)*self.k_theta
             else:
                 
-                msg.angular.z = (theta + (mind-0.2)*self.k_diff)*self.k_theta
+                msg.angular.z = (theta + (mind-0.25)*self.k_diff)*self.k_theta               
+            print(theta)
+            print(msg.angular.z)        
+            # if self.follow == "Right":
+            #     d1 = self.rightfront_dist
+            #     x = self.right_dist
+            #     minwall = np.nanmin(self.laser_range[240:301])
+                
+            # else:
+            #     d1 = self.leftfront_dist
+            #     x = self.left_dist
+            #     minwall = np.nanmin(self.laser_range[60:121])
 
-            msg.linear.x = 0.1
+
+            # desire = ((d1*math.sin(math.radians(45)))/math.tan(math.radians(45))) - x
+
+            # print(minwall)
+            # if minwall > 0.35:
+            #     if self.follow == "Left":
+            #         msg.angular.z = 0.3
+            #     else:
+            #         msg.angular.z = -0.3
+
+            # elif minwall < 0.3:
+            #     if self.follow == "Left":
+            #         msg.angular.z = -0.3
+            #     else:
+            #         msg.angular.z = 0.3
+            # else:
+
+            #     # desire negative need turn away
+            #     if self.follow == "Left":
+            #         msg.angular.z = desire*5
+            #     else:
+            #         msg.angular.z = -desire*5
+
+            msg.linear.x = 0.15
+
             if msg.angular.z > 0.45:
                 msg.angular.z = 0.45
             if msg.angular.z < -0.45:
@@ -571,7 +693,7 @@ class AutoNav(Node):
                             elif self.forward:
                                 while self.laser_range[0] == 0:
                                     rclpy.spin_once(self)
-                                if self.laser_range[0]>0.45:
+                                if self.laser_range[0]>0.35:
                                     twist = Twist()
                                     twist.linear.x = 0.2
                                     twist.angular.z = 0.0
@@ -579,20 +701,20 @@ class AutoNav(Node):
                                 else:
                                     spd = Int8()
                                     spd.data = 40
-                                    self.rotatebot(84, 0.0, 0.25)
+                                    self.rotatebot(125, 0.0, 0.25)
                                     self.shoot_dist = []
-                                    while rclpy.ok():
-                                        if len(self.shoot_dist)==0:
-                                            if (self.laser_range[0] == 0 or self.laser_range[179] == 0):
-                                                continue
-                                            else:
-                                                self.shoot_dist = [self.laser_range[0], self.laser_range[179]]
-                                        if (self.laser_range[0] != 0 and self.shoot_dist[0] - 0.07 > self.laser_range[0]) or (self.laser_range[179] != 0  and self.shoot_dist[1] - 0.07 > self.laser_range[179]):
-                                            break
-                                        twist.linear.x = 0.05
-                                        twist.angular.z = 0.0
-                                        self.publisher_.publish(twist)
-                                        rclpy.spin_once(self)
+                                    #while rclpy.ok():
+                                        #if len(self.shoot_dist)==0:
+                                        #    if (self.laser_range[0] == 0 or self.laser_range[179] == 0):
+                                        #        continue
+                                        #    else:
+                                        #       self.shoot_dist = [self.laser_range[0], self.laser_range[179]]
+                                        #if (self.laser_range[0] != 0 and self.shoot_dist[0] - 0.07 > self.laser_range[0]) or (self.laser_range[179] != 0  and self.shoot_dist[1] - 0.07 > self.laser_range[179]):
+                                        #    break
+                                        #twist.linear.x = 0.05
+                                        #twist.angular.z = 0.0
+                                        #self.publisher_.publish(twist)
+                                        #rclpy.spin_once(self)
                                     self.stopbot()
                                     self.shoot_publisher.publish(spd)
                                     self.shot = True
@@ -600,6 +722,8 @@ class AutoNav(Node):
                         #TODO aim and fire
 
                     # while there is no target detected, keep picking direction (do wall follow)
+                    elif self.shot:
+                        self.stopbot()
                     else:
                         self.pick_direction()
 
