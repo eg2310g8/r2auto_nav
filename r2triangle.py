@@ -44,10 +44,6 @@ myoccdata = np.array([])
 occ_bins = [-1, 0, 100, 101]
 map_bg_color = 1
 
-# To change before starting test
-stopping_time_in_seconds = 540  # 9 minutes
-#initial_direction = "Forward"  # "Front", "Left", "Right", "Back"
-follow = "Left" #"Left", "Right"
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
@@ -97,8 +93,6 @@ class AutoNav(Node):
 
         # create publisher for moving TurtleBot
         self.publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
-        # self.get_logger().info('Created publisher')
-
 
         # Create a subscriber
         # This node subscribes to messages of type Float64MultiArray
