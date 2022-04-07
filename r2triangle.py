@@ -176,9 +176,9 @@ class AutoNav(Node):
         # TODO upate
         self.d = 0.35
         self.forward_speed = 0.15
-        self.k_diff = 250
+        self.k_diff = 300
         self.k_theta = 0.02
-        self.follow = "Right" #"Left", "Right" CHECK CAPITALISATION
+        self.follow = "Left" #"Left", "Right" CHECK CAPITALISATION
 
         self.thermal_points = [(math.floor(ix / 8), (ix % 8)) for ix in range(0, 64)]
         self.thermal_grid_x, self.thermal_grid_y = np.mgrid[0:7:32j, 0:7:32j]
@@ -229,12 +229,12 @@ class AutoNav(Node):
             self.isTargetDetected = True
             midpoint[0] /= heat_points
             midpoint[1] /= heat_points
-            if midpoint[1] > 17:
+            if midpoint[1] > 16.5:
                 self.turn_left = True
                 self.turn_right = False
                 self.forward = False
                 self.get_logger().info("turn left")
-            elif midpoint[1] < 15:
+            elif midpoint[1] < 15.5:
                 self.turn_left = False
                 self.turn_right = True
                 self.forward = False
@@ -435,6 +435,14 @@ class AutoNav(Node):
                 self.get_logger().info("Turning 45 Left")
                 self.rotatebot(45,0.03)
                 return
+
+        if np.nanmin(np.append(self.laser_range[0:45],self.laser_range[315:359])) < 0.2:
+            if self.follow == "Left":
+                self.get_logger().info("Turning Right and Reverse")
+                self.rotatebot(-10,-0.05)
+            else:
+                self.get_logger().info("Turning Left and reverse")
+                self.rotatebot(10,-0.05)
                       
         # calculate theta
         height = d1*math.sin(math.radians(45))
@@ -487,7 +495,7 @@ class AutoNav(Node):
                     if angle > 90:
                         self.rotatebot((180-angle)*0.9,0.0,0.45)
                     else:
-                        self.rotatebot(90,0.02) 
+                        self.rotatebot(90,0.0) 
 
                 else:
                     sidedist = self.laser_range[45:176]
@@ -497,7 +505,7 @@ class AutoNav(Node):
                     if angle > 90:
                         self.rotatebot((angle-180)*0.9,0.0,0.45)
                     else:
-                        self.rotatebot(-90,0.02)
+                        self.rotatebot(-90,0.0)
 
 
             # if front and right got obstacle
@@ -628,9 +636,11 @@ class AutoNav(Node):
                             elif self.turn_right:
                                 self.rotatebot(float(-1), 0.0, 0.1)
                             elif self.forward:
-                                while self.laser_range[0] == 0:
+                                while self.laser_range[0] == 0 or self.laser_range[1] == np.nan:
                                     rclpy.spin_once(self)
-                                if self.laser_range[0]>0.35:
+                                sweep = np.append(self.laser_range[0:10], self.laser_range[350:360])
+                                print(sweep)
+                                if np.nanmax(sweep)>0.3:
                                     twist = Twist()
                                     twist.linear.x = 0.2
                                     twist.angular.z = 0.0
@@ -638,7 +648,7 @@ class AutoNav(Node):
                                 else:
                                     spd = Int8()
                                     spd.data = 40
-                                    self.rotatebot(125, 0.0, 0.25)
+                                    self.rotatebot(110, 0.0, 0.25)
                                     self.shoot_dist = []
                                     #while rclpy.ok():
                                         #if len(self.shoot_dist)==0:
