@@ -177,10 +177,7 @@ class AutoNav(Node):
         self.nfcDetected = False
         self.loaded = False
 
-        # To change before starting test
-        self.stopping_time_in_seconds = 540  # 9 minutes
-        #initial_direction = "Forward"  # "Front", "Left", "Right", "Back"
-        
+        # To change before starting test        
 
         # TODO upate
         self.d = 0.35
@@ -311,20 +308,17 @@ class AutoNav(Node):
         self.laser_range = np.array(msg.ranges)
         # print to file
         np.savetxt(scanfile, self.laser_range)
+
         # replace 0's with nan
         self.laser_range[self.laser_range == 0] = np.nan
         if self.front_dist == np.nan or self.front_dist == 100:
             self.front_dist = self.oldval["f"]
-        
         if self.leftfront_dist == np.nan or self.leftfront_dist == 100:
-            self.leftfront_dist = self.oldval["lf"]
-            
+            self.leftfront_dist = self.oldval["lf"]          
         if self.rightfront_dist == np.nan or self.rightfront_dist == 100:
             self.rightfront_dist = self.oldval["rf"]
-
         if self.left_dist == np.nan or self.left_dist == 100:
-            self.left_dist = self.oldval["l"]
-            
+            self.left_dist = self.oldval["l"]           
         if self.right_dist == np.nan or self.right_dist == 100:
             self.right_dist = self.oldval["r"]
 
@@ -332,7 +326,6 @@ class AutoNav(Node):
 
 
     # function to rotate the TurtleBot
-
     def rotatebot(self, rot_angle, x, angular=rotatechange):
        # self.get_logger().info('In rotatebot')
        # create Twist object
@@ -463,7 +456,7 @@ class AutoNav(Node):
         if d1 > 0.7:
             doffset = 0
 
-        print(doffset)
+        print("doffset: ",doffset)
 
         # offset the front lidar position so that the value we get
         # for front is the true front
@@ -478,7 +471,7 @@ class AutoNav(Node):
             frontmind = np.nanmin(self.laser_range[doffset-15:doffset+15])
             print(doffset-15,doffset+15)
         
-        print("frontmind",frontmind)
+        print("frontmind: ",frontmind)
 
         # if obstacle at front
         if frontmind < 0.35:
@@ -565,9 +558,10 @@ class AutoNav(Node):
                 msg.angular.z = (theta + (0.25-mind)*self.k_diff)*self.k_theta
             else:
                 
-                msg.angular.z = (theta + (mind-0.25)*self.k_diff)*self.k_theta               
-            print(theta)
-            print(msg.angular.z)        
+                msg.angular.z = (theta + (mind-0.25)*self.k_diff)*self.k_theta 
+
+            print("Theta: ",theta)
+            print("Angular Z before Limit: ",msg.angular.z)        
 
             msg.linear.x = self.forward_speed
 
@@ -577,8 +571,6 @@ class AutoNav(Node):
             if msg.angular.z < -0.45:
                 msg.angular.z = -0.45
 
-
-        # Send velocity command to the robot
         self.get_logger().info("x: %f" % msg.linear.x)
         self.get_logger().info("z: %f" % msg.angular.z)
 
@@ -589,6 +581,7 @@ class AutoNav(Node):
         self.oldval["r"] = self.right_dist
         self.oldval["l"] = self.left_dist
 
+        # Send velocity command to the robot
         self.publisher_.publish(msg)
 
     def stopbot(self):
@@ -619,35 +612,7 @@ class AutoNav(Node):
 
             while rclpy.ok():
                 if self.laser_range.size != 0:
-
-                    # Uncomment this part and tab it accordingly
-                    # to enable auto_checking if the map is complete
-                    # using closure function
-                    # The reliableness of this part can be improved
-
-                    # if contourCheck and len(myoccdata) != 0:
-                    # print("Inside contourCheck:")
-                    # if self.closure():
-                    # self.stopbot()
-                    # print("Inside selfclosure contourcheck:")
-                    # map is complete, so save current time into file
-                    # with open("maptime.txt", "w") as f:
-                    # f.write("Elapsed Time: " +
-                    # str(time.time() - start_time))
-                    # contourCheck = 0
-                    # save the map
-                    # cv2.imwrite('mazemap.png', myoccdata)
-                    # print("Map is complete!")
-                    # if isDoneShooting:
-                    # print("I'm done shooting and my map is complete!")
-                    # break
-
-                    # elapsed_time = time.time() - start_time
-                    # if elapsed_time > stopping_time_in_seconds:
-                    #     print(
-                    #         "Specified time has passed. Automatically shutting down.")
-                    #     break
-                    
+                  
                     # if NFC Detected and not loaded
                     if self.loaded == False and self.nfcDetected:
                         self.stopbot()
@@ -705,17 +670,6 @@ class AutoNav(Node):
                     else:
                         self.pick_direction()
 
-                    # when there is target detected, stop the bot and stop wall following logic
-                    # until it finish shooting at the target.
-                    # Then set isTargetDetected to False to resume the wall following logic
-
-                    # else:
-                    #     self.stopbot()
-                    #     self.get_logger().info("Stop bot")
-                    #     while (not isDoneShooting):
-                    #         print('In mover, target detected.')
-                    #         rclpy.spin_once(self)
-                    #     isTargetDetected = False
                 rclpy.spin_once(self)
         except KeyboardInterrupt:
             self.stopbot()
@@ -727,8 +681,6 @@ class AutoNav(Node):
         finally:
             # stop moving
             self.stopbot()
-            # save map
-            #cv2.imwrite('mazemapfinally.png', myoccdata)
 
 
 def main(args=None):
