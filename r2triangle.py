@@ -180,13 +180,14 @@ class AutoNav(Node):
         # To change before starting test
         self.stopping_time_in_seconds = 540  # 9 minutes
         #initial_direction = "Forward"  # "Front", "Left", "Right", "Back"
-        self.follow = "Left" #"Left", "Right"
+        
 
         # TODO upate
         self.d = 0.35
         self.forward_speed = 0.15
-        self.k_theta = 0.07
         self.k_diff = 250
+        self.k_theta = 0.02
+        self.follow = "Right" #"Left", "Right" CHECK CAPITALISATION
 
         self.thermal_points = [(math.floor(ix / 8), (ix % 8)) for ix in range(0, 64)]
         self.thermal_grid_x, self.thermal_grid_y = np.mgrid[0:7:32j, 0:7:32j]
@@ -384,8 +385,12 @@ class AutoNav(Node):
        # stop the rotation
        self.publisher_.publish(twist)
 
+
+    # WALL TRACKING FUNCTION
     def pick_direction(self):
         self.get_logger().info('In pick direction:')
+
+        # Getting distance
         self.front_dist = np.nan_to_num(self.laser_range[0], copy=False, nan=100)
         
         self.leftfront_dist = np.nan_to_num(self.laser_range[45], copy=False, nan=100)
@@ -412,21 +417,19 @@ class AutoNav(Node):
         msg.angular.y = 0.0
         msg.angular.z = 0.0
 
+        # ensure that there is no nan or 100
         if self.front_dist == np.nan or self.front_dist == 100:
             self.front_dist = self.oldval["f"]
-        
         if self.leftfront_dist == np.nan or self.leftfront_dist == 100:
             self.leftfront_dist = self.oldval["lf"]
-            
         if self.rightfront_dist == np.nan or self.rightfront_dist == 100:
             self.rightfront_dist = self.oldval["rf"]
-
         if self.left_dist == np.nan or self.left_dist == 100:
             self.left_dist = self.oldval["l"]
-            
         if self.right_dist == np.nan or self.right_dist == 100:
             self.right_dist = self.oldval["r"]
 
+        # selected d1 and d0 for angle track
         if self.follow == "Right":
             d1 = self.rightfront_dist
             d0 = self.right_dist
@@ -434,22 +437,19 @@ class AutoNav(Node):
             d1 = self.leftfront_dist
             d0 = self.left_dist
 
-
+        # if it sees nothing or the tracking side distance is very far, it will turn 45 degree
         if (self.front_dist > 0.5 and self.right_dist > 0.5 and self.left_dist > 0.5) or (self.follow == "Right" and self.right_dist > 0.7) or  (self.follow == "Left" and self.left_dist > 0.7):
             if self.follow == "Right" and (np.nanmin(self.laser_range[180:271]) < self.d):
-                # msg.linear.x = 0.05
-                # msg.angular.z = -0.4
-                # self.publisher_.publish(msg)
+                self.get_logger().info("Turning 45 Right")
                 self.rotatebot(-45,0.03)
                 return
 
             elif self.follow == "Left" and (np.nanmin(self.laser_range[90:181]) < self.d):
-                # msg.linear.x = 0.05
-                # msg.angular.z = 0.4
-                # self.publisher_.publish(msg)
+                self.get_logger().info("Turning 45 Left")
                 self.rotatebot(45,0.03)
                 return
-
+                      
+        # calculate theta
         height = d1*math.sin(math.radians(45))
         proj = (height/math.tan(math.radians(45))) 
         width = proj - d0
@@ -459,12 +459,14 @@ class AutoNav(Node):
         else:
             doffset = round(theta)
 
-        # if front right very far then can ignore offset
+        # if front very far then can ignore offset, it means it is tracking lone wall
         if d1 > 0.7:
             doffset = 0
 
-        # frontmind = np.nanmin(self.laser_range[doffset+10:doffset-10:-1])
         print(doffset)
+
+        # offset the front lidar position so that the value we get
+        # for front is the true front
         if doffset - 15 < 0:
             if doffset + 15 > 0:
                 frontmind = np.nanmin(np.append(self.laser_range[0:15+doffset],self.laser_range[doffset-15+360:360]))
@@ -478,10 +480,12 @@ class AutoNav(Node):
         
         print("frontmind",frontmind)
 
+        # if obstacle at front
         if frontmind < 0.35:
-
             # front and left and right got obsacle
+            # caclulate the angle of obstacle that is infront and turn accordingly
             if self.leftfront_dist < self.d and self.rightfront_dist < self.d:
+                self.get_logger().info("Angled Turn (surrounded by obs)")
                 frontdist = np.append(self.laser_range[20:-1:-1],self.laser_range[359:339:-1])
                 minfront = np.nanargmin(frontdist)
                 
@@ -509,20 +513,25 @@ class AutoNav(Node):
                         self.rotatebot(-90,0.02)
 
 
-            # # if front and right got obstacle
+            # if front and right got obstacle
             elif self.rightfront_dist < self.d:
+                self.get_logger().info("Obstacle In Front and Right")
                 if self.follow == "Right":
                     self.rotatebot(90,0.0)
                 else:
                     self.rotatebot(-90,0.0)
+
+            # if front and left got obstacle
             elif self.leftfront_dist < self.d:
+                self.get_logger().info("Obstacle In Front and left")
                 if self.follow == "Left":
                     self.rotatebot(-90,0.0)
                 else:
                     self.rotatebot(90,0.0)
 
-            # if front only
+            # if front obstacle only
             else:
+                self.get_logger().info("Obstacle In Front only")
                 if self.follow == "Right":     
                     self.rotatebot(90,0.0)
                 else:
@@ -536,9 +545,10 @@ class AutoNav(Node):
 
         
             
-
+        # if no obstacle in front
         else:
-
+            self.get_logger().info("Wall Tracking")
+            # get the minimum distance to the tracking side of the bot
             if self.follow == "Left":
                 leftside = self.laser_range[45:91]
                 mind = np.nanmin(leftside)
@@ -548,55 +558,20 @@ class AutoNav(Node):
                 mind = np.nanmin(rightside)
                 
             self.get_logger().info('Min Distance: %s' % str(mind))
-            
 
-            
-            self.k_diff = 250
-            self.k_theta = 0.02
-
+            # turn according to angle of robot from the wall
             if self.follow =="Right":
-                theta = -theta # to confirm and figure out whats going on
+                theta = -theta 
                 msg.angular.z = (theta + (0.25-mind)*self.k_diff)*self.k_theta
             else:
                 
                 msg.angular.z = (theta + (mind-0.25)*self.k_diff)*self.k_theta               
             print(theta)
             print(msg.angular.z)        
-            # if self.follow == "Right":
-            #     d1 = self.rightfront_dist
-            #     x = self.right_dist
-            #     minwall = np.nanmin(self.laser_range[240:301])
-                
-            # else:
-            #     d1 = self.leftfront_dist
-            #     x = self.left_dist
-            #     minwall = np.nanmin(self.laser_range[60:121])
 
+            msg.linear.x = self.forward_speed
 
-            # desire = ((d1*math.sin(math.radians(45)))/math.tan(math.radians(45))) - x
-
-            # print(minwall)
-            # if minwall > 0.35:
-            #     if self.follow == "Left":
-            #         msg.angular.z = 0.3
-            #     else:
-            #         msg.angular.z = -0.3
-
-            # elif minwall < 0.3:
-            #     if self.follow == "Left":
-            #         msg.angular.z = -0.3
-            #     else:
-            #         msg.angular.z = 0.3
-            # else:
-
-            #     # desire negative need turn away
-            #     if self.follow == "Left":
-            #         msg.angular.z = desire*5
-            #     else:
-            #         msg.angular.z = -desire*5
-
-            msg.linear.x = 0.15
-
+            # limit the max turning speed
             if msg.angular.z > 0.45:
                 msg.angular.z = 0.45
             if msg.angular.z < -0.45:
@@ -606,11 +581,14 @@ class AutoNav(Node):
         # Send velocity command to the robot
         self.get_logger().info("x: %f" % msg.linear.x)
         self.get_logger().info("z: %f" % msg.angular.z)
+
+        # update the old value to prevent death
         self.oldval["lf"] = self.leftfront_dist
         self.oldval["f"] = self.front_dist
         self.oldval["rf"] = self.rightfront_dist
         self.oldval["r"] = self.right_dist
         self.oldval["l"] = self.left_dist
+
         self.publisher_.publish(msg)
 
     def stopbot(self):
@@ -664,11 +642,11 @@ class AutoNav(Node):
                     # print("I'm done shooting and my map is complete!")
                     # break
 
-                    elapsed_time = time.time() - start_time
-                    if elapsed_time > stopping_time_in_seconds:
-                        print(
-                            "Specified time has passed. Automatically shutting down.")
-                        break
+                    # elapsed_time = time.time() - start_time
+                    # if elapsed_time > stopping_time_in_seconds:
+                    #     print(
+                    #         "Specified time has passed. Automatically shutting down.")
+                    #     break
                     
                     # if NFC Detected and not loaded
                     if self.loaded == False and self.nfcDetected:
