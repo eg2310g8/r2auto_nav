@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from asyncio.format_helpers import _format_callback_source
+from shutil import move
 from this import d
 import rclpy
 from rclpy.node import Node
@@ -116,6 +117,7 @@ class AutoNav(Node):
         self.yaw = 0
         self.locx = 0
         self.locy = 0
+        self.movelist = []
 
         # create subscription to track occupancy
         self.occ_subscription = self.create_subscription(
@@ -160,6 +162,13 @@ class AutoNav(Node):
             self.ldr_callback,
             10
         )
+
+        self.target_subscription = self.create_subscription(
+            Float32MultiArray,
+            'target',
+            self.target_callback,
+            10
+        )
         
         self.isTargetDetected = False
         self.isDoneShooting = False
@@ -189,6 +198,17 @@ class AutoNav(Node):
         self.turn_right = False
         self.forward = False
 
+    def target_callback(self, msg):
+
+        if not self.movelist:
+            for i in range(0,len(msg.data),2):
+                print("MSG: ",msg.data[i],msg.data[i+1])
+                if msg.data[i] < 0.015:
+                    self.movelist.append([0,msg.data[i+1]])
+                elif msg.data[i] < 0.025:
+                    self.movelist.append([msg.data[i+1],0])
+                #self.movelist.append(temp)
+        print("Move List: ",self.movelist)
 
 
     def ldr_callback(self,msg):
@@ -304,7 +324,7 @@ class AutoNav(Node):
 
 
     # function to rotate the TurtleBot
-    def rotatebot(self, rot_angle, x, angular=rotatechange):
+    def rotatebot(self, rot_angle, x=0.0, angular=rotatechange):
        # self.get_logger().info('In rotatebot')
        # create Twist object
        twist = Twist()
@@ -356,71 +376,41 @@ class AutoNav(Node):
        # stop the rotation
        self.publisher_.publish(twist)
 
-    # # Move in a desired angle
-    # def move_angle(self, angle, distx, disty, speed=0.12):
-    #     cx = self.locx
-    #     cy = self.locy
-    #     tx = self.locx + distx
-    #     ty = self.locy + disty
-    #     # offset angle to check
-    #     if angle - 15 < 0:
-    #         if angle + 15 > 0:
-    #             frontmind = np.nanmin(np.append(self.laser_range[0:15+angle],self.laser_range[doffset-15+360:360]))
-    #             print(0,15+angle,angle-15+360,360)
-    #         else:
-    #             frontmind = np.nanmin(self.laser_range[angle-15+360:angle+15+360])
-    #             print(angle-15+360,angle+15+360)
-    #     else:
-    #         frontmind = np.nanmin(self.laser_range[angle-15:angle+15])
+    # Move in a desired angle
+    def move_angle(self, angle, dist, speed=0.12):
+        #distx = -distx
+        angle = math.degrees(angle)
+        print("Angle and Dist: ", angle,dist)
+        
+        #print("angle: ", angle)
+        if angle > 0:
+            self.rotatebot(angle)
+        iyaw = complex(math.cos(self.yaw), math.sin(self.yaw))
+        #dist = math.sqrt(distx**2 + disty**2)
+        #print("Dist: ", dist)
 
-    #     twist = Twist()
-    #     self.publisher_.publish(twist)
+        ix = self.locx
+        iy = self.locy
+        cdist = 0
 
-    #     # if there is nothing in the robot path
-    #     if frontmind > (((distx+cx)**2 + (disty+cy)**2)**0.5)/2:
-    #         self.rotatebot(angle,0.0)
-    #         tyaw = self.yaw
-    #         tyaw = complex(math.cos(tyaw), math.sin(tyaw))
-    #         cdist = (((distx+cx)**2 + (disty+cy)**2)**0.5)/2
-    #         while cdist > 0:
-    #             twist = Twist()
-    #             twist.linear.x = speed
-                
-    #             # get current yaw angle
-    #             cyaw = self.yaw
-    #             cyaw = complex(math.cos(cyaw), math.sin(cyaw))
 
-    #             c_change = tyaw / cyaw
-    #             c_change_dir = np.sign(c_change.imag)
+        while cdist < dist:
+            twist = Twist()
+            twist.linear.x = speed
+            cyaw = self.yaw
+            cyaw = complex(math.cos(cyaw), math.sin(cyaw))
+            c_change = iyaw/cyaw
+            c_change_dir = np.sign(c_change.imag)
+            twist.angular.z = c_change_dir * 0.05
 
-    #             twist.angular.z = c_change_dir * 0.02
-    #             self.publisher_.publish(twist)
-    #             rclpy.spin_once(self)
-
-    #             cx = self.locx
-    #             cy = self.locy
-    #             cdist = (((distx+cx)**2 + (disty+cy)**2)**0.5)
-    #         twist = Twist()
-    #         twist.linear.x = 0.0
-    #         twist.angular.z = 0.0
-    #         self.publisher_.publish(twist)
-
-    #     # theres is something in the robot path
-    #     else:
-    #         self.pick_direction()
-    #         rclpy.spin_once(self)
-    #         cx = self.locx
-    #         cy = self.locy
-    #         angle = round(math.degrees(math.atan(cx-tx,cy-ty)))
-    #         if angle - 15 < 0:
-    #             if angle + 15 > 0:
-    #                 frontmind = np.nanmin(np.append(self.laser_range[0:15+angle],self.laser_range[doffset-15+360:360]))
-    #                 print(0,15+angle,angle-15+360,360)
-    #             else:
-    #                 frontmind = np.nanmin(self.laser_range[angle-15+360:angle+15+360])
-    #                 print(angle-15+360,angle+15+360)
-    #         else:
-    #             frontmind = np.nanmin(self.laser_range[angle-15:angle+15])
+            self.publisher_.publish(twist)
+            rclpy.spin_once(self)
+            cx = self.locx
+            cy = self.locy
+            cdist = math.sqrt((cx-ix)**2+(cy-iy)**2)
+            print(cx, ix, cy, iy, cdist, dist)
+            
+        self.stopbot()
             
             
 
@@ -659,14 +649,16 @@ class AutoNav(Node):
             while (self.laser_range.size == 0):
                 print("Spin to get a valid lidar data")
                 rclpy.spin_once(self)
-            contourCheck = 1
-            start_time = time.time()
 
             # initial move to find the appropriate wall to follow
-            #self.initialmove()
+            #self.move_angle(0.0,0.5,0.12)
             # start wall follow logic
-            #self.move_angle(30,0.2)
-            self.pick_direction()
+
+            #self.move_angle(0.16, -0.14, 0.12)
+
+            if self.movelist:
+                movement = self.movelist.pop(0)
+                self.move_angle(movement[0],movement[1],0.12)
 
             while rclpy.ok():
                 if self.laser_range.size != 0:
@@ -722,13 +714,14 @@ class AutoNav(Node):
                                     self.shoot_publisher.publish(spd)
                                     self.shot = True
 
-                        #TODO aim and fire
-
                     # while there is no target detected, keep picking direction (do wall follow)
                     elif self.shot:
                         self.stopbot()
                     else:
-                        self.pick_direction()
+                        if self.movelist:
+                            movement = self.movelist.pop(0)
+                            self.move_angle(movement[0],movement[1],0.12)
+
 
                 rclpy.spin_once(self)
         except KeyboardInterrupt:

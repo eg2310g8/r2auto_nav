@@ -26,7 +26,8 @@ setup(
             'r2occupancy = noob_nav.Original_Files.r2occupancy:main',
             'r2occupancy2 = noob_nav.Original_Files.r2occupancy2:main',
             'r2noob = noob_nav.r2noob:main',
-            'r2triangle = noob_nav.r2triangle:main'
+            'r2triangle = noob_nav.r2triangle:main',
+            'r2ultranav = noob_nav.r2ultranav:main'
         ],
     },
 )
