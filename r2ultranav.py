@@ -203,10 +203,11 @@ class AutoNav(Node):
         if not self.movelist:
             for i in range(0,len(msg.data),2):
                 print("MSG: ",msg.data[i],msg.data[i+1])
-                if msg.data[i] < 0.015:
+                if msg.data[i] < 0.0015:
                     self.movelist.append([0,msg.data[i+1]])
-                elif msg.data[i] < 0.025:
-                    self.movelist.append([msg.data[i+1],0])
+                elif msg.data[i] < 0.0025:
+                    temp = [msg.data[i+1],0]
+                    self.movelist.append(temp)
                 #self.movelist.append(temp)
         print("Move List: ",self.movelist)
 
@@ -379,12 +380,12 @@ class AutoNav(Node):
     # Move in a desired angle
     def move_angle(self, angle, dist, speed=0.12):
         #distx = -distx
-        angle = math.degrees(angle)
-        print("Angle and Dist: ", angle,dist)
+        dangle = math.degrees(angle)
+        print("Angle and Dist: ", dangle, dist)
         
         #print("angle: ", angle)
-        if angle > 0:
-            self.rotatebot(angle)
+        if dangle != 0:
+            self.rotatebot(dangle)
         iyaw = complex(math.cos(self.yaw), math.sin(self.yaw))
         #dist = math.sqrt(distx**2 + disty**2)
         #print("Dist: ", dist)
