@@ -35,7 +35,7 @@ from PIL import Image
 from scipy.interpolate import griddata
 
 # constants
-rotatechange = 0.65
+rotatechange = 1.38
 back_angles = range(150, 210 + 1, 1)
 
 scanfile = 'lidar.txt'
@@ -188,10 +188,10 @@ class AutoNav(Node):
 
         # TODO upate
         self.d = 0.35
-        self.forward_speed = 0.17
+        self.forward_speed = 0.179
         self.k_diff = 300
-        self.k_theta = 0.02
-        self.follow = "Left" #"Left", "Right" CHECK CAPITALISATION
+        self.k_theta = 0.06
+        self.follow = "Right" #"Left", "Right" CHECK CAPITALISATION
 
         self.thermal_points = [(math.floor(ix / 8), (ix % 8)) for ix in range(0, 64)]
         self.thermal_grid_x, self.thermal_grid_y = np.mgrid[0:7:32j, 0:7:32j]
@@ -207,6 +207,8 @@ class AutoNav(Node):
         self.turn_right = False
         self.forward = False
         self.emptyturn = False
+        self.turn_away = False
+        self.gg_turn = 0
 
     def target_callback(self, msg):
 
@@ -225,6 +227,9 @@ class AutoNav(Node):
         mapcompleted = msg.data
         if mapcompleted:
             self.get_logger().info("Map Completed")
+            self.forward_speed = 0.16
+            self.k_diff = 300
+            self.k_theta = 0.05
             self.mapComplete = True
 
 
@@ -261,6 +266,8 @@ class AutoNav(Node):
             self.isTargetDetected = True
             midpoint[0] /= heat_points
             midpoint[1] /= heat_points
+            self.turn_away = True
+            # calc theta
             if midpoint[1] > 17:
                 self.turn_left = True
                 self.turn_right = False
@@ -277,6 +284,7 @@ class AutoNav(Node):
                 self.forward = True
                 self.get_logger().info("forward")
         else:
+            self.turn_away = False
             self.turn_right = False
             self.turn_left = False
             self.forward = False
@@ -506,22 +514,17 @@ class AutoNav(Node):
 
         # if it sees nothing or the tracking side distance is very far, it will turn 45 degree
         if (self.front_dist > 0.5 and self.right_dist > 0.5 and self.left_dist > 0.5) or (self.follow == "Right" and self.right_dist > 0.6) or  (self.follow == "Left" and self.leftfront_dist > 0.6):
-            # if self.follow == "Right" and (np.nanmin(self.laser_range[180:271]) < self.d):
-            #     self.get_logger().info("Turning 45 Right")
-            #     self.rotatebot(-45,0.03)
-            #     return
 
-            # elif self.follow == "Left" and (np.nanmin(self.laser_range[90:181]) < self.d):
-            #     msg.linear.x = 0.02
-            #     msg.angular.z = 0.4
-            #     self.get_logger().info("Turning 45 Left")
-            #     #self.rotatebot(45,0.03)
-            #     self.publisher_.publish(msg)
-            #     return
-            self.get_logger().info("sharp turn")
-            msg.linear.x = 0.1
-            msg.angular.z = 0.5
-            self.publisher_.publish(msg)
+            if self.follow == "Left":
+                self.get_logger().info("sharp turn left")
+                msg.linear.x = 0.14
+                msg.angular.z = 0.7
+                self.publisher_.publish(msg)
+            else:
+                self.get_logger().info("sharp turn right")
+                msg.linear.x = 0.14
+                msg.angular.z = -0.7
+                self.publisher_.publish(msg)                
             #self.stopbot()
             return
 
@@ -565,7 +568,7 @@ class AutoNav(Node):
         print("frontmind: ",frontmind)
 
         # if obstacle at front
-        if frontmind < 0.32:
+        if frontmind < 0.35:
             # front and left and right got obsacle
             # caclulate the angle of obstacle that is infront and turn accordingly
             if self.leftfront_dist < self.d and self.rightfront_dist < self.d:
@@ -584,7 +587,7 @@ class AutoNav(Node):
                     if angle > 90:
                         self.rotatebot((180-angle)*0.9,0.0,0.45)
                     else:
-                        self.rotatebot(90,0.0) 
+                        self.rotatebot(85,0.0) 
 
                 else:
                     sidedist = self.laser_range[45:176]
@@ -594,32 +597,32 @@ class AutoNav(Node):
                     if angle > 90:
                         self.rotatebot((angle-180)*0.9,0.0,0.45)
                     else:
-                        self.rotatebot(-90,0.0)
+                        self.rotatebot(-85,0.0)
 
 
             # if front and right got obstacle
             elif self.rightfront_dist < self.d:
                 self.get_logger().info("Obstacle In Front and Right")
                 if self.follow == "Right":
-                    self.rotatebot(90,0.05)
+                    self.rotatebot(85,0.1)
                 else:
-                    self.rotatebot(-90,0.05)
+                    self.rotatebot(-85,0.1)
 
             # if front and left got obstacle
             elif self.leftfront_dist < self.d:
                 self.get_logger().info("Obstacle In Front and left")
                 if self.follow == "Left":
-                    self.rotatebot(-90,0.05)
+                    self.rotatebot(-85,0.1)
                 else:
-                    self.rotatebot(90,0.05)
+                    self.rotatebot(85,0.1)
 
             # if front obstacle only
             else:
                 self.get_logger().info("Obstacle In Front only")
                 if self.follow == "Right":     
-                    self.rotatebot(90,0.05)
+                    self.rotatebot(85,0.1)
                 else:
-                    self.rotatebot(-90,0.05)
+                    self.rotatebot(-85,0.1)
 
 
             self.get_logger().info('Front Distance: %s' % str(self.front_dist))
@@ -714,32 +717,48 @@ class AutoNav(Node):
 
                     # if AMG Detected Heat Signature and map completed
                     if self.isTargetDetected and self.loaded and self.mapComplete: # add check for loaded
-                        while self.movelist:
-                            movement = self.movelist.pop(0)
-                            self.move_angle(movement[0],movement[1],0.12)
-                            rclpy.spin_once(self)
 
-
-                        while not self.isTargetDetected:
-                            self.rotatebot(2)
-                            rclpy.spin_once(self)
-                                                                
-
-                        #self.stopbot()
                         self.get_logger().info("Stop bot")
                                         # allow the callback functions to run
 
                         if not self.shot:
+                            if self.turn_away:
+                                if self.follow == "Right":
+                                    d1 = self.rightfront_dist
+                                    d0 = self.right_dist
+                                else:
+                                    d1 = self.leftfront_dist
+                                    d0 = self.left_dist
+                                height = d1*math.sin(math.radians(45))
+                                proj = (height/math.tan(math.radians(45))) 
+                                width = proj - d0
+                                theta = math.degrees(math.atan2(width,height))
+                                if self.follow == "Right" and np.nanmin(self.laser_range[225:315]) < 0.3:
+                                    self.gg_turn = 90 - theta
+                                    self.rotatebot(self.gg_turn, 0.0)
+                                    self.move_angle(0.0, 0.1)
+                                    while not self.isTargetDetected:
+                                        self.rotatebot(-2,0.0,0.5)
+                                        rclpy.spin_once(self)
+                                    continue
+                                elif self.follow == "Left" and np.nanmin(self.laser_range[45:135]) < 0.3:
+                                    self.gg_turn = theta - 90
+                                    self.rotatebot(self.gg_turn, 0.0)
+                                    self.move_angle(0.0, 0.1)
+                                    while not self.isTargetDetected:
+                                        self.rotatebot(2,0.0,0.5)
+                                        rclpy.spin_once(self)
+                                    continue
                             if self.turn_left:
-                               self.rotatebot(float(1), 0.0, 0.1)
+                               self.rotatebot(float(1), 0.0, 0.2)
                             elif self.turn_right:
-                                self.rotatebot(float(-1), 0.0, 0.1)
+                                self.rotatebot(float(-1), 0.0, 0.2)
                             elif self.forward:
                                 while self.laser_range[0] == 0 or self.laser_range[1] == np.nan:
                                     rclpy.spin_once(self)
-                                sweep = np.append(self.laser_range[0:5], self.laser_range[355:360])
+                                sweep = np.append(self.laser_range[0:3], self.laser_range[357:360])
                                 print(sweep)
-                                if np.nanmax(sweep)>0.3:
+                                if np.nanmax(sweep)>0.4:
                                     twist = Twist()
                                     twist.linear.x = 0.2
                                     twist.angular.z = 0.0
@@ -750,7 +769,7 @@ class AutoNav(Node):
                                     self.rotatebot(110, 0.0, 0.25)
                                     self.shoot_dist = []
                                     self.stopbot()
-                                    self.shoot_publisher.publish(spd)
+                                    #self.shoot_publisher.publish(spd)
                                     self.shot = True
 
                     # while there is no target detected, keep picking direction (do wall follow)
