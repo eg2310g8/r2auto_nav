@@ -75,7 +75,7 @@ def map_value(x, in_min, in_max, out_min, out_max):
 
 def thermal_viz(msg):
     MINTEMP = 25.0
-    MAXTEMP = 32.0
+    MAXTEMP = 60.0
     for r in range(len(msg)):
         for p in range(len(msg[0])):
             msg[r][p] = map_value(msg[r][p], MINTEMP, MAXTEMP, 0, 255)
@@ -170,16 +170,25 @@ class AutoNav(Node):
             10
         )
         
+        self.mapcomplete_subscription = self.create_subscription(
+            Bool,
+            'map_complete',
+            self.mapcomplete_callback,
+            10
+        )
+        
+
         self.isTargetDetected = False
         self.isDoneShooting = False
         self.nfcDetected = False
         self.loaded = False
+        self.mapComplete = False
 
         # To change before starting test        
 
         # TODO upate
         self.d = 0.35
-        self.forward_speed = 0.15
+        self.forward_speed = 0.17
         self.k_diff = 300
         self.k_theta = 0.02
         self.follow = "Left" #"Left", "Right" CHECK CAPITALISATION
@@ -197,6 +206,7 @@ class AutoNav(Node):
         self.turn_left = False
         self.turn_right = False
         self.forward = False
+        self.emptyturn = False
 
     def target_callback(self, msg):
 
@@ -210,6 +220,12 @@ class AutoNav(Node):
                     self.movelist.append(temp)
                 #self.movelist.append(temp)
         print("Move List: ",self.movelist)
+
+    def mapcomplete_callback(self,msg):
+        mapcompleted = msg.data
+        if mapcompleted:
+            self.get_logger().info("Map Completed")
+            self.mapComplete = True
 
 
     def ldr_callback(self,msg):
@@ -245,12 +261,12 @@ class AutoNav(Node):
             self.isTargetDetected = True
             midpoint[0] /= heat_points
             midpoint[1] /= heat_points
-            if midpoint[1] > 16.5:
+            if midpoint[1] > 17:
                 self.turn_left = True
                 self.turn_right = False
                 self.forward = False
                 self.get_logger().info("turn left")
-            elif midpoint[1] < 15.5:
+            elif midpoint[1] < 15:
                 self.turn_left = False
                 self.turn_right = True
                 self.forward = False
@@ -267,7 +283,7 @@ class AutoNav(Node):
             self.isTargetDetected = False
        
     def odom_callback(self, msg):
-        self.get_logger().info('In odom_callback')
+        #self.get_logger().info('In odom_callback')
         orientation_quat = msg.pose.pose.orientation
         position = msg.pose.pose.position
         self.locx, self.locy = position.x, position.y
@@ -358,10 +374,28 @@ class AutoNav(Node):
        # self.get_logger().info('c_change_dir: %f c_dir_diff: %f' % (c_change_dir, c_dir_diff))
        # if the rotation direction was 1.0, then we will want to stop when the c_dir_diff
        # becomes -1.0, and vice versa
+       start_raw = self.get_clock().now().to_msg()
+       start = start_raw.sec+float(start_raw.nanosec/np.power(10, 9))
+       angle_prev = [current_yaw]
+       prev_index = -1
+       current_index = 0
        while(c_change_dir * c_dir_diff > 0):
            # allow the callback functions to run
            rclpy.spin_once(self)
            current_yaw = self.yaw
+           end_raw = self.get_clock().now().to_msg()
+           end = end_raw.sec+float(end_raw.nanosec/np.power(10, 9))
+           #print(end - start)
+           angle_prev += [current_yaw]
+           current_index += 1
+           if(end-start > 1):
+               prev_index += 1
+               if abs(angle_prev[current_index] - angle_prev[prev_index]) < np.pi/36:
+                #    print(current_index, prev_index)
+                #    print(angle_prev)
+                   twist.angular.x = 0.08
+                   break
+
            # convert the current yaw to complex form
            c_yaw = complex(math.cos(current_yaw), math.sin(current_yaw))
            # self.get_logger().info('Current Yaw: %f' % math.degrees(current_yaw))
@@ -471,24 +505,33 @@ class AutoNav(Node):
             d0 = self.left_dist
 
         # if it sees nothing or the tracking side distance is very far, it will turn 45 degree
-        if (self.front_dist > 0.5 and self.right_dist > 0.5 and self.left_dist > 0.5) or (self.follow == "Right" and self.right_dist > 0.7) or  (self.follow == "Left" and self.left_dist > 0.7):
-            if self.follow == "Right" and (np.nanmin(self.laser_range[180:271]) < self.d):
-                self.get_logger().info("Turning 45 Right")
-                self.rotatebot(-45,0.03)
-                return
+        if (self.front_dist > 0.5 and self.right_dist > 0.5 and self.left_dist > 0.5) or (self.follow == "Right" and self.right_dist > 0.6) or  (self.follow == "Left" and self.leftfront_dist > 0.6):
+            # if self.follow == "Right" and (np.nanmin(self.laser_range[180:271]) < self.d):
+            #     self.get_logger().info("Turning 45 Right")
+            #     self.rotatebot(-45,0.03)
+            #     return
 
-            elif self.follow == "Left" and (np.nanmin(self.laser_range[90:181]) < self.d):
-                self.get_logger().info("Turning 45 Left")
-                self.rotatebot(45,0.03)
-                return
+            # elif self.follow == "Left" and (np.nanmin(self.laser_range[90:181]) < self.d):
+            #     msg.linear.x = 0.02
+            #     msg.angular.z = 0.4
+            #     self.get_logger().info("Turning 45 Left")
+            #     #self.rotatebot(45,0.03)
+            #     self.publisher_.publish(msg)
+            #     return
+            self.get_logger().info("sharp turn")
+            msg.linear.x = 0.1
+            msg.angular.z = 0.5
+            self.publisher_.publish(msg)
+            #self.stopbot()
+            return
 
         if np.nanmin(np.append(self.laser_range[0:45],self.laser_range[315:359])) < 0.2:
             if self.follow == "Left":
                 self.get_logger().info("Turning Right and Reverse")
-                self.rotatebot(-10,-0.05)
+                self.rotatebot(-10,-0.03)
             else:
                 self.get_logger().info("Turning Left and reverse")
-                self.rotatebot(10,-0.05)
+                self.rotatebot(10,-0.03)
                       
         # calculate theta
         height = d1*math.sin(math.radians(45))
@@ -522,7 +565,7 @@ class AutoNav(Node):
         print("frontmind: ",frontmind)
 
         # if obstacle at front
-        if frontmind < 0.35:
+        if frontmind < 0.32:
             # front and left and right got obsacle
             # caclulate the angle of obstacle that is infront and turn accordingly
             if self.leftfront_dist < self.d and self.rightfront_dist < self.d:
@@ -558,34 +601,31 @@ class AutoNav(Node):
             elif self.rightfront_dist < self.d:
                 self.get_logger().info("Obstacle In Front and Right")
                 if self.follow == "Right":
-                    self.rotatebot(90,0.0)
+                    self.rotatebot(90,0.05)
                 else:
-                    self.rotatebot(-90,0.0)
+                    self.rotatebot(-90,0.05)
 
             # if front and left got obstacle
             elif self.leftfront_dist < self.d:
                 self.get_logger().info("Obstacle In Front and left")
                 if self.follow == "Left":
-                    self.rotatebot(-90,0.0)
+                    self.rotatebot(-90,0.05)
                 else:
-                    self.rotatebot(90,0.0)
+                    self.rotatebot(90,0.05)
 
             # if front obstacle only
             else:
                 self.get_logger().info("Obstacle In Front only")
                 if self.follow == "Right":     
-                    self.rotatebot(90,0.0)
+                    self.rotatebot(90,0.05)
                 else:
-                    self.rotatebot(-90,0.0)
+                    self.rotatebot(-90,0.05)
 
 
             self.get_logger().info('Front Distance: %s' % str(self.front_dist))
             self.get_logger().info('Front Left Distance: %s' % str(self.leftfront_dist))
             self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
-
-
-        
-            
+                    
         # if no obstacle in front
         else:
             self.get_logger().info("Wall Tracking")
@@ -603,10 +643,10 @@ class AutoNav(Node):
             # turn according to angle of robot from the wall
             if self.follow =="Right":
                 theta = -theta 
-                msg.angular.z = (theta + (0.25-mind)*self.k_diff)*self.k_theta
+                msg.angular.z = (theta + (0.20-mind)*self.k_diff)*self.k_theta
             else:
                 
-                msg.angular.z = (theta + (mind-0.25)*self.k_diff)*self.k_theta 
+                msg.angular.z = (theta + (mind-0.20)*self.k_diff)*self.k_theta 
 
             print("Theta: ",theta)
             print("Angular Z before Limit: ",msg.angular.z)        
@@ -656,16 +696,15 @@ class AutoNav(Node):
             # start wall follow logic
 
             #self.move_angle(0.16, -0.14, 0.12)
+            # self.rotatebot(-90, 0.0)
 
-            if self.movelist:
-                movement = self.movelist.pop(0)
-                self.move_angle(movement[0],movement[1],0.12)
+            self.pick_direction()
 
             while rclpy.ok():
                 if self.laser_range.size != 0:
                   
-                    # if NFC Detected and not loaded
-                    if self.loaded == False and self.nfcDetected:
+                    # if NFC Detected and not loaded and map completed
+                    if self.loaded == False and self.nfcDetected and self.mapComplete:
                         self.stopbot()
                         self.get_logger().info("Stop bot")
                         # wait for button to be pressed
@@ -673,8 +712,19 @@ class AutoNav(Node):
                             self.get_logger().info("Waiting for Button")
                             rclpy.spin_once(self)
 
-                    # if AMG Detected Heat Signature
-                    if self.isTargetDetected and self.loaded: # add check for loaded
+                    # if AMG Detected Heat Signature and map completed
+                    if self.isTargetDetected and self.loaded and self.mapComplete: # add check for loaded
+                        while self.movelist:
+                            movement = self.movelist.pop(0)
+                            self.move_angle(movement[0],movement[1],0.12)
+                            rclpy.spin_once(self)
+
+
+                        while not self.isTargetDetected:
+                            self.rotatebot(2)
+                            rclpy.spin_once(self)
+                                                                
+
                         #self.stopbot()
                         self.get_logger().info("Stop bot")
                                         # allow the callback functions to run
@@ -687,7 +737,7 @@ class AutoNav(Node):
                             elif self.forward:
                                 while self.laser_range[0] == 0 or self.laser_range[1] == np.nan:
                                     rclpy.spin_once(self)
-                                sweep = np.append(self.laser_range[0:10], self.laser_range[350:360])
+                                sweep = np.append(self.laser_range[0:5], self.laser_range[355:360])
                                 print(sweep)
                                 if np.nanmax(sweep)>0.3:
                                     twist = Twist()
@@ -699,18 +749,6 @@ class AutoNav(Node):
                                     spd.data = 40
                                     self.rotatebot(110, 0.0, 0.25)
                                     self.shoot_dist = []
-                                    #while rclpy.ok():
-                                        #if len(self.shoot_dist)==0:
-                                        #    if (self.laser_range[0] == 0 or self.laser_range[179] == 0):
-                                        #        continue
-                                        #    else:
-                                        #       self.shoot_dist = [self.laser_range[0], self.laser_range[179]]
-                                        #if (self.laser_range[0] != 0 and self.shoot_dist[0] - 0.07 > self.laser_range[0]) or (self.laser_range[179] != 0  and self.shoot_dist[1] - 0.07 > self.laser_range[179]):
-                                        #    break
-                                        #twist.linear.x = 0.05
-                                        #twist.angular.z = 0.0
-                                        #self.publisher_.publish(twist)
-                                        #rclpy.spin_once(self)
                                     self.stopbot()
                                     self.shoot_publisher.publish(spd)
                                     self.shot = True
@@ -719,9 +757,7 @@ class AutoNav(Node):
                     elif self.shot:
                         self.stopbot()
                     else:
-                        if self.movelist:
-                            movement = self.movelist.pop(0)
-                            self.move_angle(movement[0],movement[1],0.12)
+                        self.pick_direction()
 
 
                 rclpy.spin_once(self)
