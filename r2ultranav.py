@@ -762,7 +762,7 @@ class AutoNav(Node):
                                 if np.nanmin(self.laser_range[210:315]) < 0.30 and np.nanmin(self.laser_range[45:150]) < 0.30:
                                     pass 
                                 elif np.nanmin(self.laser_range[210:315]) < 0.25 and np.nanmin(self.laser_range[45:150]) > 0.25:
-                                    self.gg_turn = 90 - theta
+                                    self.gg_turn = 80 - theta
                                     self.rotatebot(self.gg_turn, 0.0)
                                     self.move_angle(0.0, 0.1-self.move_lesser)
                                     while not self.isTargetDetected:
@@ -770,7 +770,7 @@ class AutoNav(Node):
                                         rclpy.spin_once(self)
                                     continue
                                 elif np.nanmin(self.laser_range[45:135]) < 0.25 and np.nanmin(self.laser_range[225:315]) > 0.25:
-                                    self.gg_turn = theta - 90
+                                    self.gg_turn = theta - 80
                                     self.rotatebot(self.gg_turn, 0.0)
                                     self.move_angle(0.0, 0.1-self.move_lesser)
                                     while not self.isTargetDetected:
