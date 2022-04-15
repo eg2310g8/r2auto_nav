@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# TODO remove unecessary imports
 from asyncio.format_helpers import _format_callback_source
 from curses import keyname
 from shutil import move
@@ -37,14 +38,6 @@ from scipy.interpolate import griddata
 
 # constants
 rotatechange = 1.38 # left: 1.38 right: 1.35
-back_angles = range(150, 210 + 1, 1)
-
-scanfile = 'lidar.txt'
-mapfile = 'map.txt'
-myoccdata = np.array([])
-occ_bins = [-1, 0, 100, 101]
-map_bg_color = 1
-
 
 # code from https://automaticaddison.com/how-to-convert-a-quaternion-into-euler-angles-in-python/
 
@@ -112,6 +105,7 @@ class AutoNav(Node):
             10)
         # self.get_logger().info('Created subscriber')
         self.odom_subscription  # prevent unused variable warning
+        
         # initialize variables
         self.roll = 0
         self.pitch = 0
@@ -119,15 +113,6 @@ class AutoNav(Node):
         self.locx = 0
         self.locy = 0
         self.movelist = []
-
-        # create subscription to track occupancy
-        self.occ_subscription = self.create_subscription(
-            OccupancyGrid,
-            'map',
-            self.occ_callback,
-            qos_profile_sensor_data)
-        self.occ_subscription  # prevent unused variable warning
-        self.occdata = np.array([])
 
         # create subscription to track lidar
         self.scan_subscription = self.create_subscription(
@@ -212,7 +197,6 @@ class AutoNav(Node):
         self.gg_turn = 0
 
     def target_callback(self, msg):
-
         if not self.movelist:
             for i in range(0,len(msg.data),2):
                 print("MSG: ",msg.data[i],msg.data[i+1])
@@ -254,10 +238,7 @@ class AutoNav(Node):
         self.thermal_array = np.reshape(self.thermal_array, (32, 32))
         #self.get_logger().info('Reading Thermal Camera')
         #thermal_viz(self.thermal_array)
-        # if 15 percent of grid is heated
-        #if np.count_nonzero(self.thermal_array > 30) > 160 and self.loaded:
-        #    self.isTargetDetected = True
-        #    self.get_logger().info("Heated Target Found")
+
         midpoint = [0, 0]
         heat_points = 0
         for row in range(len(self.thermal_array)):
@@ -302,39 +283,10 @@ class AutoNav(Node):
         self.roll, self.pitch, self.yaw = euler_from_quaternion(
             orientation_quat.x, orientation_quat.y, orientation_quat.z, orientation_quat.w)
 
-    def occ_callback(self, msg):
-        global myoccdata
-        self.get_logger().info('In occ_callback')
-        # create numpy array
-        msgdata = np.array(msg.data)
-        # compute histogram to identify percent of bins with -1
-        # occ_counts = np.histogram(msgdata,occ_bins)
-        # calculate total number of bins
-        # total_bins = msg.info.width * msg.info.height
-        # log the info
-        # self.get_logger().info('Unmapped: %i Unoccupied: %i Occupied: %i Total: %i' % (occ_counts[0][0], occ_counts[0][1], occ_counts[0][2], total_bins))
-
-        # make msgdata go from 0 instead of -1, reshape into 2D
-        oc2 = msgdata + 1
-        # reshape to 2D array using column order
-        # self.occdata = np.uint8(oc2.reshape(msg.info.height,msg.info.width,order='F'))
-        try:
-            trans = self.tfBuffer.lookup_transform(
-                'map', 'base_link', rclpy.time.Time())
-        except (LookupException, ConnectivityException, ExtrapolationException) as e:
-            self.get_logger().info('No transformation found')
-            return
-        self.occdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
-        myoccdata = np.uint8(oc2.reshape(msg.info.height, msg.info.width))
-        odata = myoccdata
-        np.savetxt(mapfile, self.occdata)
-
     def scan_callback(self, msg):
         # self.get_logger().info('In scan_callback')
         # create numpy array
         self.laser_range = np.array(msg.ranges)
-        # print to file
-        np.savetxt(scanfile, self.laser_range)
 
         # replace 0's with nan
         self.laser_range[self.laser_range == 0] = np.nan
@@ -348,9 +300,6 @@ class AutoNav(Node):
             self.left_dist = self.oldval["l"]           
         if self.right_dist == np.nan or self.right_dist == 100:
             self.right_dist = self.oldval["r"]
-
-
-
 
     # function to rotate the TurtleBot
     def rotatebot(self, rot_angle, x=0.0, angular=rotatechange):
@@ -478,18 +427,6 @@ class AutoNav(Node):
         self.rightfront_dist = np.nan_to_num(self.laser_range[315], copy=False, nan=100)
         self.right_dist = np.nan_to_num(self.laser_range[270], copy=False, nan=100)
 
-        # ensure that there is no nan or 100
-        if self.front_dist == np.nan or self.front_dist == 100:
-            self.front_dist = self.oldval["f"]
-        if self.leftfront_dist == np.nan or self.leftfront_dist == 100:
-            self.leftfront_dist = self.oldval["lf"]
-        if self.rightfront_dist == np.nan or self.rightfront_dist == 100:
-            self.rightfront_dist = self.oldval["rf"]
-        if self.left_dist == np.nan or self.left_dist == 100:
-            self.left_dist = self.oldval["l"]
-        if self.right_dist == np.nan or self.right_dist == 100:
-            self.right_dist = self.oldval["r"]
-
         if self.follow == "Right":
             self.get_logger().info('Front Distance: %s' % str(self.front_dist))
             self.get_logger().info('Front Right Distance: %s' % str(self.rightfront_dist))
@@ -507,8 +444,6 @@ class AutoNav(Node):
         msg.angular.x = 0.0
         msg.angular.y = 0.0
         msg.angular.z = 0.0
-
-
 
         # selected d1 and d0 for angle track
         if self.follow == "Right":
@@ -538,7 +473,6 @@ class AutoNav(Node):
                 msg.linear.x = 0.14
                 msg.angular.z = -0.7
                 self.publisher_.publish(msg)                
-            #self.stopbot()
             return
 
         if np.nanmin(np.append(self.laser_range[0:45],self.laser_range[316:359])) < 0.2:
@@ -698,7 +632,6 @@ class AutoNav(Node):
         self.publisher_.publish(twist)
 
     def mover(self):
-        global myoccdata
         try:
             rclpy.spin_once(self)
 
@@ -707,12 +640,7 @@ class AutoNav(Node):
                 print("Spin to get a valid lidar data")
                 rclpy.spin_once(self)
 
-            # initial move to find the appropriate wall to follow
-            #self.move_angle(0.0,0.5,0.12)
-            # start wall follow logic
-
-            #self.move_angle(0.16, -0.14, 0.12)
-            # self.rotatebot(-90, 0.0)
+            # Uncomment to test and find limits
             # while rclpy.ok():
             #     try:
             #         twist = Twist()
@@ -742,7 +670,8 @@ class AutoNav(Node):
 
                         self.get_logger().info("Stop bot")
                                         # allow the callback functions to run
-
+                        
+                        # firing process
                         if not self.shot:
                             if self.turn_away:
                                 if self.follow == "Right":
