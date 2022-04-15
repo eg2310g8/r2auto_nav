@@ -2,6 +2,8 @@
 
 ROS2 auto_nav code for EG2310 module
 
+# TODO UPDATE README
+
 ## Structure
 
 This repository contains all the code that is necessary for a TurtleBot to map a closed connected unknown maze (by following the wall on the robot's right) and shoot a ping-pong ball to an IR target (provided the firing mechanism used is the same as ours). You can go to our [Documentation](Robot%20Documentation.pdf) file to read about the details of our robot.
