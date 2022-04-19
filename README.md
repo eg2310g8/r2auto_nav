@@ -10,7 +10,8 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 - [trinav.py](trinav.py) file is the wall following code which calculates the angle of the robot to the wall and determine its locomotion when following the wall
 - [tri2nav.py](tri2nav.py) file is similar to trinav. However, the parameters has been tuned for the robot and targetting and firing has been improved to move away from surrounding obstacles. 
 - [Original_Files](Original_Files) folder contains all the original files that comes with the initial fork from [shihchengyen's r2auto_nav repository](https://github.com/shihchengyen/r2auto_nav) and are <b>not</b> necessary for the TurtleBot to navigate the maze by wall following, identify the IR target, and fire.
-- TODO: add code that needs to be run on turtlebot and possible navigation code
+- TODO: add code to be run on turtlebot and add code that was running on Justin Laptop
+- TODO: add scripts we used for testing
 
 ## Software Block Diagram
 ![Software Block Diagram](Documentations/software_block_diagram.png)
