@@ -194,7 +194,7 @@ class AutoNav(Node):
         self.forward = False
         self.emptyturn = False
         self.turn_away = False
-        self.gg_turn = 0
+        self.shoot_turn = 0
 
     def target_callback(self, msg):
         if not self.movelist:
@@ -691,16 +691,16 @@ class AutoNav(Node):
                                 if np.nanmin(self.laser_range[210:315]) < 0.30 and np.nanmin(self.laser_range[45:150]) < 0.30:
                                     pass 
                                 elif np.nanmin(self.laser_range[210:315]) < 0.25 and np.nanmin(self.laser_range[45:150]) > 0.25:
-                                    self.gg_turn = 80 - theta
-                                    self.rotatebot(self.gg_turn, 0.0)
+                                    self.shoot_turn = 80 - theta
+                                    self.rotatebot(self.shoot_turn, 0.0)
                                     self.move_angle(0.0, 0.1-self.move_lesser)
                                     while not self.isTargetDetected:
                                         self.rotatebot(-2,0.0,0.5)
                                         rclpy.spin_once(self)
                                     continue
                                 elif np.nanmin(self.laser_range[45:135]) < 0.25 and np.nanmin(self.laser_range[225:315]) > 0.25:
-                                    self.gg_turn = theta - 80
-                                    self.rotatebot(self.gg_turn, 0.0)
+                                    self.shoot_turn = theta - 80
+                                    self.rotatebot(self.shoot_turn, 0.0)
                                     self.move_angle(0.0, 0.1-self.move_lesser)
                                     while not self.isTargetDetected:
                                         self.rotatebot(2,0.0,0.5)

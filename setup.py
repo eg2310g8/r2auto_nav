@@ -1,6 +1,6 @@
 from setuptools import setup
 
-package_name = 'noob_nav'
+package_name = 'r2auto_nav'
 
 setup(
     name=package_name,
@@ -20,14 +20,14 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'r2mover = noob_nav.Original_Files.r2mover:main',
-            'r2moverotate = noob_nav.Original_Files.r2moverotate:main',
-            'r2scanner = noob_nav.Original_Files.r2scanner:main',
-            'r2occupancy = noob_nav.Original_Files.r2occupancy:main',
-            'r2occupancy2 = noob_nav.Original_Files.r2occupancy2:main',
-            'r2noob = noob_nav.r2noob:main',
-            'r2triangle = noob_nav.r2triangle:main',
-            'r2ultranav = noob_nav.r2ultranav:main'
+            'r2mover = r2auto_nav.Original_Files.r2mover:main',
+            'r2moverotate = r2auto_nav.Original_Files.r2moverotate:main',
+            'r2scanner = r2auto_nav.Original_Files.r2scanner:main',
+            'r2occupancy = r2auto_nav.Original_Files.r2occupancy:main',
+            'r2occupancy2 = r2auto_nav.Original_Files.r2occupancy2:main',
+            'dtnav = r2auto_nav.dtnav:main',
+            'trinav = r2auto_nav.trinav:main',
+            'tri2nav = r2auto_nav.tri2nav:main'
         ],
     },
 )
