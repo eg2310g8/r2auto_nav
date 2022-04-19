@@ -178,6 +178,7 @@ class AutoNav(Node):
         self.k_diff = 300 #Left: 300 Right: 200
         self.k_theta = 0.06 #Left: 0.06 Right: 0.03
         self.follow = "Left" #"Left", "Right" CHECK CAPITALISATION
+        self.heated = 31.5
 
         self.thermal_points = [(math.floor(ix / 8), (ix % 8)) for ix in range(0, 64)]
         self.thermal_grid_x, self.thermal_grid_y = np.mgrid[0:7:32j, 0:7:32j]
@@ -243,7 +244,7 @@ class AutoNav(Node):
         heat_points = 0
         for row in range(len(self.thermal_array)):
             for col in range(len(self.thermal_array[0])):
-                if self.thermal_array[row][col] > 31.5:
+                if self.thermal_array[row][col] > self.heated:
                     midpoint[0] += row
                     midpoint[1] += col
                     heat_points += 1
