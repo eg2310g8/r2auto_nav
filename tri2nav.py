@@ -179,6 +179,7 @@ class AutoNav(Node):
         self.k_theta = 0.06 #Left: 0.06 Right: 0.03
         self.follow = "Left" #"Left", "Right" CHECK CAPITALISATION
         self.heated = 31.5
+        self.wall = 0.2
 
         self.thermal_points = [(math.floor(ix / 8), (ix % 8)) for ix in range(0, 64)]
         self.thermal_grid_x, self.thermal_grid_y = np.mgrid[0:7:32j, 0:7:32j]
@@ -476,7 +477,8 @@ class AutoNav(Node):
                 self.publisher_.publish(msg)                
             return
 
-        if np.nanmin(np.append(self.laser_range[0:45],self.laser_range[316:359])) < 0.2:
+        # if wall is close infront
+        if np.nanmin(np.append(self.laser_range[0:45],self.laser_range[316:359])) < self.wall:
             if self.follow == "Left":
                 self.get_logger().info("Turning Right and Reverse")
                 self.rotatebot(-10,-0.03)
@@ -516,7 +518,7 @@ class AutoNav(Node):
         print("frontmind: ",frontmind)
 
         # if obstacle at front
-        if frontmind < 0.35:
+        if frontmind < self.d:
             # front and left and right got obsacle
             # caclulate the angle of obstacle that is infront and turn accordingly
             if self.leftfront_dist < self.d and self.rightfront_dist < self.d:
@@ -594,10 +596,10 @@ class AutoNav(Node):
             # turn according to angle of robot from the wall
             if self.follow =="Right":
                 theta = -theta 
-                msg.angular.z = (theta + (0.20-mind)*self.k_diff)*self.k_theta
+                msg.angular.z = (theta + (self.wall-mind)*self.k_diff)*self.k_theta
             else:
                 
-                msg.angular.z = (theta + (mind-0.20)*self.k_diff)*self.k_theta 
+                msg.angular.z = (theta + (mind-self.wall)*self.k_diff)*self.k_theta 
 
             print("Theta: ",theta)
             print("Angular Z before Limit: ",msg.angular.z)        

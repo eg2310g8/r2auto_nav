@@ -19,7 +19,8 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 
 - ```rotatechange``` to adjust the rotation speed of the TurtleBot. 
 - ```self.follow``` to change the side of the wall to follow
-- ```self.d``` to change the distance to obstacle
+- ```self.d``` to change detection range for obstacle. E.g.: If ```self.d == 0.35```, if detected distance on LiDAR is less than 0.35m the programme will treat it as an obstacle.
+- ```self.wall``` to change wall tracking distance from the wall
 - ```self.k_diff``` to tune the robot correction to its distance from the wall
 - ```self.k_theta``` to tune the robot correction to its angle from the wall
 - ```self.follow_speed``` to tune the robot movement speed
