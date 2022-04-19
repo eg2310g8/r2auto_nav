@@ -13,8 +13,9 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 - TODO: add code to be run on turtlebot and add code that was running on Justin Laptop
 - TODO: add scripts we used for testing
 
-## Software Block Diagram
-![Software Block Diagram](Documentations/software_block_diagram.png)
+## Media
+- [Photos](Photos) contain images of our robot
+- Prof Yen uploaded videos of our graded run [here](https://photos.google.com/share/AF1QipMOHCC4Hmy2iMv2cuJiwt46ZaMUjUX0MDv22KL1oktZ5YMMdFfMDikiKv0L4tRCtg?key=cUpqMlcxdmlxRlFrZUQwS3BXZ1cxc0tzVDR4VG5B)
 
 ## Variables Configuration
 
@@ -26,6 +27,9 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 - ```self.k_theta``` to tune the robot correction to its angle from the wall
 - ```self.follow_speed``` to tune the robot movement speed
 - ```self.heated``` which determines the target detection temperature threshold
+  
+## Software Block Diagram
+![Software Block Diagram](Documentations/software_block_diagram.png)
 
 ## How to Use
 TODO:
