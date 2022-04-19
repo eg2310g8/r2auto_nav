@@ -45,6 +45,6 @@ Running Instructions:
 - Start the wall following code from your laptop: 
   ```ros2 run <package_name> tri2nav ```
 
-  ## Acknowledgement
+## Acknowledgement
 
-  The structure of the repository has been forked from  [alvynben's r2auto_nav repository](https://github.com/alvynben/r2auto_nav)
+ The structure of the repository has been forked from  [alvynben's r2auto_nav repository](https://github.com/alvynben/r2auto_nav)
