@@ -37,7 +37,7 @@ In the RPi on the TurtleBot:
 - Build the package.
 
 Running Instructions:
-- Start rosbu from the RPi on the TurtleBot.
+- Start rosbu from the RPi on the TurtleBot after the robot is placed in the maze. Do not touch the robot until the gyro calibration is complete.
 - Start rslam from your laptop: 
   ``` ros2 launch turtlebot3_cartographer cartographer.launch.py ```
 - Start the code from the RPi on the TurtleBot: 
