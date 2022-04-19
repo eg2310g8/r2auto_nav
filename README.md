@@ -13,7 +13,7 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 - TODO: add code that needs to be run on turtlebot and possible navigation code
 
 ## Software Block Diagram
-![Software Block Diagram](Documentations/software_block_diagram.png.jpg)
+![Software Block Diagram](Documentations/software_block_diagram.png)
 
 ## Variables Configuration
 
