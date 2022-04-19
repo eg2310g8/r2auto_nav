@@ -44,3 +44,7 @@ Running Instructions:
   ```ros2 run <package_name> <entry_point_specified_in_the_setup.py> ```
 - Start the wall following code from your laptop: 
   ```ros2 run <package_name> tri2nav ```
+
+  ## Acknowledgement
+
+  The structure of the repository has been forked from  [alvynben's r2auto_nav repository](https://github.com/alvynben/r2auto_nav)
