@@ -27,6 +27,16 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 - ```self.heated``` which determines the target detection temperature threshold
 
 ## How to Use
+TODO:
+Procedure for run:
+Justin Laptop:
+sudo pigpiod
+ros2 run robot control (need to restart if it detected tin can)
+rslam (check that it can detect the walls and stuff)
+
+Xu En Laptop:
+rosbu (done in the maze)
+ros2 run noob_nav r2ultranav
 
 In your laptop:
 - Create a ROS2 package and clone this repository into that package. Make sure to edit the setup.py file so that you can run the wall following code.
@@ -46,6 +56,8 @@ Running Instructions:
 - Start the wall following code from your laptop: 
   ```ros2 run <package_name> tri2nav ```
 
-## Acknowledgement
+## Acknowledgements
 
  The structure of the repository has been forked from  [alvynben's r2auto_nav repository](https://github.com/alvynben/r2auto_nav)
+
+ Group 8 would like to thank the teaching team for their guidance and support throught out the module
