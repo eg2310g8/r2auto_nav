@@ -13,7 +13,7 @@ This folder contains documentations that are referenced in the Final Report
 
 **Electrical**
 - [Electronic System Architecture](electronic_system_architecture.png) is a summary of the flow of power and signals in the system
-- [Protoboard Schematics](protoboard_schematics.png) shows the connections on the protoboard
+- [Perfboard Schematics](perfboard_schematics.png) shows the connections on the perfboard
 
 **Software**
 - [Software Block Diagram](software_block_diagram.png) shows the logical flow of the whole robot programme
@@ -22,5 +22,5 @@ This folder contains documentations that are referenced in the Final Report
 
 **TO ADD:**
 - Final Report
-- STL Files
+
 
