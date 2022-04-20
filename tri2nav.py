@@ -624,6 +624,76 @@ class AutoNav(Node):
 
         # Send velocity command to the robot
         self.publisher_.publish(msg)
+        
+    def shootsequence(self):
+        if not self.shot:
+            if self.turn_away:
+                
+                #calculate angle of robot with respect to the wall
+                if self.follow == "Right":
+                    d1 = self.rightfront_dist
+                    d0 = self.right_dist
+                else:
+                    d1 = self.leftfront_dist
+                    d0 = self.left_dist
+                height = d1*math.sin(math.radians(45))
+                proj = (height/math.tan(math.radians(45))) 
+                width = proj - d0
+                theta = math.degrees(math.atan2(width,height))
+                
+                #if the area is narrow make obstacle avoidance movement smaller
+                self.move_lesser = 0
+                if np.nanmin(self.laser_range[210:315]) < 0.40 and np.nanmin(self.laser_range[45:150]) < 0.40:
+                    self.move_lesser = 0.05
+                #if the area is too narrow, do not take any obstacle avoidance manoeuvre
+                if np.nanmin(self.laser_range[210:315]) < 0.30 and np.nanmin(self.laser_range[45:150]) < 0.30:
+                    pass 
+                #if right of the robot is too close to the wall, move away from it
+                elif np.nanmin(self.laser_range[210:315]) < 0.25 and np.nanmin(self.laser_range[45:150]) > 0.25:
+                    self.shoot_turn = 80 - theta
+                    self.rotatebot(self.shoot_turn, 0.0)
+                    self.move_angle(0.0, 0.1-self.move_lesser)
+                    #search for heat signature
+                    while not self.isTargetDetected:
+                        self.rotatebot(-2,0.0,0.5)
+                        rclpy.spin_once(self)
+                    return
+                #if left of the robot is too close to the wall, move away from it
+                elif np.nanmin(self.laser_range[45:135]) < 0.25 and np.nanmin(self.laser_range[225:315]) > 0.25:
+                    self.shoot_turn = theta - 80
+                    self.rotatebot(self.shoot_turn, 0.0)
+                    self.move_angle(0.0, 0.1-self.move_lesser)
+                    #search for heat signature
+                    while not self.isTargetDetected:
+                        self.rotatebot(2,0.0,0.5)
+                        rclpy.spin_once(self)
+                    return
+            #turn left towards the heat signature
+            if self.turn_left:
+                self.rotatebot(float(1), 0.0, 0.2)
+            #turn right towards the heat signature
+            elif self.turn_right:
+                self.rotatebot(float(-1), 0.0, 0.2)
+            #move towards the heat signature 
+            elif self.forward:
+                while self.laser_range[0] == 0 or self.laser_range[1] == np.nan:
+                    rclpy.spin_once(self)
+                    sweep = np.append(self.laser_range[0:3], self.laser_range[357:360])
+                #check if the target is out of range, if it is move towards it 
+                if np.nanmax(sweep)>0.4:
+                    twist = Twist()
+                    twist.linear.x = 0.2
+                    twist.angular.z = 0.0
+                    self.publisher_.publish(twist)
+                #if target is in range, reposition the robot such that the firing mechanism is pointed towards the tin can, and send the firing signal to the rpi
+                else:
+                    spd = Int8()
+                    spd.data = 40
+                    self.rotatebot(110, 0.0, 0.25)
+                    self.shoot_dist = []
+                    self.stopbot()
+                    self.shoot_publisher.publish(spd)
+                    self.shot = True
 
     def stopbot(self):
         self.get_logger().info('In stopbot')
@@ -670,68 +740,9 @@ class AutoNav(Node):
 
                     # if AMG Detected Heat Signature and map completed
                     if self.isTargetDetected and self.loaded and self.mapComplete: # add check for loaded
-
-                        self.get_logger().info("Stop bot")
-                                        # allow the callback functions to run
-                        
                         # firing process
-                        if not self.shot:
-                            if self.turn_away:
-                                if self.follow == "Right":
-                                    d1 = self.rightfront_dist
-                                    d0 = self.right_dist
-                                else:
-                                    d1 = self.leftfront_dist
-                                    d0 = self.left_dist
-                                height = d1*math.sin(math.radians(45))
-                                proj = (height/math.tan(math.radians(45))) 
-                                width = proj - d0
-                                theta = math.degrees(math.atan2(width,height))
-                                print("Left: ",np.nanmin(self.laser_range[45:150]), "Right: ",np.nanmin(self.laser_range[210:315]))
-                                self.move_lesser = 0
-                                if np.nanmin(self.laser_range[210:315]) < 0.40 and np.nanmin(self.laser_range[45:150]) < 0.40:
-                                    self.move_lesser = 0.05
-                                if np.nanmin(self.laser_range[210:315]) < 0.30 and np.nanmin(self.laser_range[45:150]) < 0.30:
-                                    pass 
-                                elif np.nanmin(self.laser_range[210:315]) < 0.25 and np.nanmin(self.laser_range[45:150]) > 0.25:
-                                    self.shoot_turn = 80 - theta
-                                    self.rotatebot(self.shoot_turn, 0.0)
-                                    self.move_angle(0.0, 0.1-self.move_lesser)
-                                    while not self.isTargetDetected:
-                                        self.rotatebot(-2,0.0,0.5)
-                                        rclpy.spin_once(self)
-                                    continue
-                                elif np.nanmin(self.laser_range[45:135]) < 0.25 and np.nanmin(self.laser_range[225:315]) > 0.25:
-                                    self.shoot_turn = theta - 80
-                                    self.rotatebot(self.shoot_turn, 0.0)
-                                    self.move_angle(0.0, 0.1-self.move_lesser)
-                                    while not self.isTargetDetected:
-                                        self.rotatebot(2,0.0,0.5)
-                                        rclpy.spin_once(self)
-                                    continue
-                            if self.turn_left:
-                               self.rotatebot(float(1), 0.0, 0.2)
-                            elif self.turn_right:
-                                self.rotatebot(float(-1), 0.0, 0.2)
-                            elif self.forward:
-                                while self.laser_range[0] == 0 or self.laser_range[1] == np.nan:
-                                    rclpy.spin_once(self)
-                                sweep = np.append(self.laser_range[0:3], self.laser_range[357:360])
-                                print(sweep)
-                                if np.nanmax(sweep)>0.4:
-                                    twist = Twist()
-                                    twist.linear.x = 0.2
-                                    twist.angular.z = 0.0
-                                    self.publisher_.publish(twist)
-                                else:
-                                    spd = Int8()
-                                    spd.data = 40
-                                    self.rotatebot(110, 0.0, 0.25)
-                                    self.shoot_dist = []
-                                    self.stopbot()
-                                    self.shoot_publisher.publish(spd)
-                                    self.shot = True
-
+                        self.shootsequence()
+                        
                     # while there is no target detected, keep picking direction (do wall follow)
                     elif self.shot:
                         self.stopbot()
