@@ -11,6 +11,7 @@ This folder contains documentations that are referenced in the Final Report
 - [Loading Manual for TAs](Loading_Manual_for_TAs.pdf) is a document to demonstrate how the ping pong ball should be loaded and robot be informed that the ping pong balls are loaded
 - [End User Document](G8_End_User_Document.pdf) is a document containing the General System Description & Critical Data, Assembly Document, Acceptable Defect Log, Factory Acceptance Test and the Mainetnace and Part Replacement Log.
 - [Detailed Assembly Document](detailed_assembly_document.pdf) shows the steps required to build and attach our payload to Turtlebot Burger
+- [Detailed Bill of Materials](detailed_bill_of_materials.pdf) shows the breakdown of the parts and where they can be purchased.
 
 TO ADD:
 - Final Report
