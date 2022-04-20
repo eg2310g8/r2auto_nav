@@ -32,28 +32,17 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 ![Software Block Diagram](Documentations/software_block_diagram.png)
 
 ## How to Use
-TODO:
-Procedure for run:
-Justin Laptop:
-sudo pigpiod
-ros2 run robot control (need to restart if it detected tin can)
-rslam (check that it can detect the walls and stuff)
-
-Xu En Laptop:
-rosbu (done in the maze)
-ros2 run noob_nav r2ultranav
-
 In your laptop:
 - Create a ROS2 package and clone this repository into that package. Make sure to edit the setup.py file so that you can run the wall following code.
 - Build the package.
+- TODO Include code ran on justin laptop
 
 In the RPi on the TurtleBot:
 - TODO UPDATE
-- Create a ROS2 package and copy [r2targeting.py](r2targeting.py) file into that package. Make sure to edit the setup.py file so that you can run the targeting code.
-- Build the package.
 
 Running Instructions:
 - Start rosbu from the RPi on the TurtleBot after the robot is placed in the maze. Do not touch the robot until the gyro calibration is complete.
+- Run ```sudo pigpiod``` on the RPi
 - Start rslam from your laptop: 
   ``` ros2 launch turtlebot3_cartographer cartographer.launch.py ```
 - Start the code from the RPi on the TurtleBot: 
