@@ -9,6 +9,7 @@ This folder contains documentations that are referenced in the Final Report
 
 **Mechanical**
 - [Detailed Assembly Document](detailed_assembly_document.pdf) shows the steps required to build and attach our payload to Turtlebot Burger
+- This [repository](https://github.com/eg2310g8/fabrication) contains the STL and DXF files that we used to fabircate our components
 
 **Electrical**
 - [Electronic System Architecture](electronic_system_architecture.png) is a summary of the flow of power and signals in the system
