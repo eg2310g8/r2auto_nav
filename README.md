@@ -1,13 +1,15 @@
 <h1> r2auto_nav </h1>
 
-McTruck, Group 8, Aytree Basak, Ding Yitian, Tan Chern Lin Justin, Teoh Xu En
+**McTruck**
 
-For module EG2310: Fundamentals of System Design, AY 21/22 Sem 2 part of the Innovation and Design Programme
+Group 8: Aytree Basak, Ding Yitian, Tan Chern Lin Justin, Teoh Xu En
 
-![Image of Robot](Documentations/FrontRightView.jpg)
+For module EG2310: Fundamentals of System Design, AY 21/22 Sem 2, part of the Innovation and Design Programme, NUS
+
+![Image of Robot](Photos/FrontRightView.jpg)
 
 
-## Structure
+## Repository Structure
 
 This repository contains all the code that is necessary for a TurtleBot to map a closed connected unknown maze by following a wall (users can indicate if they want the robot to follow the left or right wall), detect and stop at loading zone demarcated by NFC tags and shoot a ping-pong ball to an IR target (provided the firing mechanism used is the same as ours). You can go to our [Documentations](Documentations) folder to obtain more detailed information about our mechanical, electrical and software design. 
 
@@ -22,7 +24,7 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 - TODO: add scripts we used for testing
 
 ## Media
-- [Photos](Photos) contain images of our robot
+- [Photos](Photos) folder contain images of our robot
 - Prof Yen uploaded videos of our graded run [here](https://photos.google.com/share/AF1QipMOHCC4Hmy2iMv2cuJiwt46ZaMUjUX0MDv22KL1oktZ5YMMdFfMDikiKv0L4tRCtg?key=cUpqMlcxdmlxRlFrZUQwS3BXZ1cxc0tzVDR4VG5B)
 
 ## Variables Configuration
