@@ -27,7 +27,8 @@ setup(
             'r2occupancy2 = r2auto_nav.Original_Files.r2occupancy2:main',
             'dtnav = r2auto_nav.dtnav:main',
             'trinav = r2auto_nav.trinav:main',
-            'tri2nav = r2auto_nav.tri2nav:main'
+            'tri2nav = r2auto_nav.tri2nav:main',
+            'frontier = r2auto_nav.mapping:main'
         ],
     },
 )
