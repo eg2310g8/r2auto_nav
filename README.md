@@ -6,10 +6,13 @@ ROS2 auto_nav code for EG2310 module
 
 This repository contains all the code that is necessary for a TurtleBot to map a closed connected unknown maze by following a wall (users can indicate if they want the robot to follow the left or right wall) and shoot a ping-pong ball to an IR target (provided the firing mechanism used is the same as ours). You can go to our [Documentations](Documentations) folder to obtain more detailed information about our mechanical, electrical and software design. 
 
+- [Original_Files](Original_Files) folder contains all the original files that comes with the initial fork from [shihchengyen's r2auto_nav repository](https://github.com/shihchengyen/r2auto_nav) and are <b>not</b> necessary for the TurtleBot to navigate the maze by wall following, identify the IR target, and fire.
 - [dtnav.py](dtnav.py) file is the wall following code which has been calibrated to fit our robots' needs. The code uses a decision tree to decide its actions when wall following.
 - [trinav.py](trinav.py) file is the wall following code which calculates the angle of the robot to the wall and determine its locomotion when following the wall
 - [tri2nav.py](tri2nav.py) file is similar to trinav. However, the parameters has been tuned for the robot and targetting and firing has been improved to move away from surrounding obstacles. 
-- [Original_Files](Original_Files) folder contains all the original files that comes with the initial fork from [shihchengyen's r2auto_nav repository](https://github.com/shihchengyen/r2auto_nav) and are <b>not</b> necessary for the TurtleBot to navigate the maze by wall following, identify the IR target, and fire.
+- [mapping.py](mapping.py) file is used to generate the map of the maze. It also publishes if the mapping is completed.
+- [astar.py](astary.py) TODO DESC
+
 - TODO: add code to be run on turtlebot and add code that was running on Justin Laptop
 - TODO: add scripts we used for testing
 
@@ -35,10 +38,7 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 In your laptop:
 - Create a ROS2 package and clone this repository into that package. Make sure to edit the setup.py file so that you can run the wall following code.
 - Build the package.
-- TODO Include code ran on justin laptop
-
-In the RPi on the TurtleBot:
-- TODO UPDATE
+- TODO Include code ran on RPi
 
 Running Instructions:
 - Start rosbu from the RPi on the TurtleBot after the robot is placed in the maze. Do not touch the robot until the gyro calibration is complete.
@@ -46,9 +46,10 @@ Running Instructions:
 - Start rslam from your laptop: 
   ``` ros2 launch turtlebot3_cartographer cartographer.launch.py ```
 - Start the code from the RPi on the TurtleBot: 
-  ```ros2 run <package_name> <entry_point_specified_in_the_setup.py> ```
+  ```ros2 run <package_name> control ```
 - Start the wall following code from your laptop: 
   ```ros2 run <package_name> tri2nav ```
+  ```ros2 run <package_name> frontier ```
 
 ## Acknowledgements
 
