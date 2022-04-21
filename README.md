@@ -1,10 +1,15 @@
 <h1> r2auto_nav </h1>
 
-ROS2 auto_nav code for EG2310 module
+McTruck, Group 8, Aytree Basak, Ding Yitian, Tan Chern Lin Justin, Teoh Xu En
+
+For module EG2310: Fundamentals of System Design, AY 21/22 Sem 2 part of the Innovation and Design Programme
+
+![Image of Robot](Documentations/FrontRightView.jpg)
+
 
 ## Structure
 
-This repository contains all the code that is necessary for a TurtleBot to map a closed connected unknown maze by following a wall (users can indicate if they want the robot to follow the left or right wall) and shoot a ping-pong ball to an IR target (provided the firing mechanism used is the same as ours). You can go to our [Documentations](Documentations) folder to obtain more detailed information about our mechanical, electrical and software design. 
+This repository contains all the code that is necessary for a TurtleBot to map a closed connected unknown maze by following a wall (users can indicate if they want the robot to follow the left or right wall), detect and stop at loading zone demarcated by NFC tags and shoot a ping-pong ball to an IR target (provided the firing mechanism used is the same as ours). You can go to our [Documentations](Documentations) folder to obtain more detailed information about our mechanical, electrical and software design. 
 
 - [Original_Files](Original_Files) folder contains all the original files that comes with the initial fork from [shihchengyen's r2auto_nav repository](https://github.com/shihchengyen/r2auto_nav) and are <b>not</b> necessary for the TurtleBot to navigate the maze by wall following, identify the IR target, and fire.
 - [dtnav.py](dtnav.py) file is the wall following code which has been calibrated to fit our robots' needs. The code uses a decision tree to decide its actions when wall following.
