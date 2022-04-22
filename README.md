@@ -17,10 +17,10 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 - [dtnav.py](dtnav.py) file is the wall following code which has been calibrated to fit our robots' needs. The code uses a decision tree to decide its actions when wall following.
 - [trinav.py](trinav.py) file is the wall following code which calculates the angle of the robot to the wall and determine its locomotion when following the wall
 - [tri2nav.py](tri2nav.py) file is similar to trinav. However, the parameters has been tuned for the robot and targetting and firing has been improved to move away from surrounding obstacles. 
-- [mapping.py](mapping.py) file is used to generate the map of the maze. It also publishes if the mapping is completed.
-- [astar.py](astary.py) TODO DESC
+- [mapping.py](mapping.py) file is used to generate the map of the maze. It also publishes if the mapping is completed. It also contains the alogrithm to identify the frontiers of a explored region given a map.
+- [astar.py](astary.py) is a dependency of mapping.py. It contains the A* algorithm that is used to search for a path given two points a map. 
 
-- TODO: add code to be run on turtlebot and add code that was running on Justin Laptop
+- TODO: add code to be run on turtlebot
 - TODO: add scripts we used for testing
 
 ## Media
@@ -42,10 +42,14 @@ This repository contains all the code that is necessary for a TurtleBot to map a
 ![Software Block Diagram](Documentations/software_block_diagram.png)
 
 ## How to Use
-In your laptop:
+On your laptop:
 - Create a ROS2 package and clone this repository into that package. Make sure to edit the setup.py file so that you can run the wall following code.
-- Build the package.
-- TODO Include code ran on RPi
+- Build the package using ```colcon build --packages-select r2auto_nav --symlink-install```
+
+On the RPi onboard the turtlebot:
+- Create a new package using ```ros2 pkg create --build-type ament_python <package_name>```
+- Copy file from the folder ```rpi/``` in this repository into the created package
+- Build the package using ```colcon build --packages-select <package_name> --symlink-install```
 
 Running Instructions:
 - Start rosbu from the RPi on the TurtleBot after the robot is placed in the maze. Do not touch the robot until the gyro calibration is complete.
