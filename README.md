@@ -80,7 +80,7 @@ The following testing codes are run on the RPi:
   ```
   sudo nano /opt/ros/foxy/share/cartographer/configuration_files/trajectory_builder_2d.lua
   ```
-- Change the variable ```resolution``` to ```0.03```: 
+- Change the value of ```resolution``` to ```0.03```: 
   ```
   grid_options_2d = {
       grid_type = "PROBABILITY_GRID",
