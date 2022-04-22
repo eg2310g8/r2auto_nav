@@ -1,6 +1,4 @@
-<h1> r2auto_nav </h1>
-
-<h2><b>McTruck</b></h2>
+<h1>McTruck</h1>
 
 Group 8: Aytree Basak, Ding Yitian, Tan Chern Lin Justin, Teoh Xu En
 
