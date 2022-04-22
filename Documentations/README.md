@@ -3,6 +3,7 @@
 This folder contains documentations that are referenced in the Final Report 
 
 **General**
+- [Final Report](Group08_FinalReport.pdf) is a compilation of our system design process. It explains our design considerations and why certain decisions were made along the way. It was also the final documentation we submitted for the module. 
 - [Loading Manual for TAs](Loading_Manual_for_TAs.pdf) is a document to demonstrate how the ping pong ball should be loaded and robot be informed that the ping pong balls are loaded
 - [End User Document](G8_End_User_Document.pdf) is a document containing the General System Description & Critical Data, Assembly Document, Acceptable Defect Log, Factory Acceptance Test and the Mainetnace and Part Replacement Log.
 - [Detailed Bill of Materials](detailed_bill_of_materials.pdf) shows the breakdown of the parts and where they can be purchased.
@@ -17,10 +18,3 @@ This folder contains documentations that are referenced in the Final Report
 
 **Software**
 - [Software Block Diagram](software_block_diagram.png) shows the logical flow of the whole robot programme
-
-
-
-**TO ADD:**
-- Final Report
-
-
