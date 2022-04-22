@@ -1,6 +1,6 @@
 <h1> r2auto_nav </h1>
 
-**McTruck**
+<h2><b>McTruck</b></h2>
 
 Group 8: Aytree Basak, Ding Yitian, Tan Chern Lin Justin, Teoh Xu En
 
@@ -62,15 +62,18 @@ Running Instructions:
   ```ros2 run <package_name> control ```
 - Start the wall following code from your laptop: 
   ```ros2 run <package_name> tri2nav ```
+- Run the code to detect map completition:
   ```ros2 run <package_name> frontier ```
 
 ## Testing
+The following testing codes are run on the RPi:
 - To test run the launching mechanism:
   ```python3 <directory to flywheel.py>/flywheel.py```
-- To read the values from the LDR:
-  ```ros2 topic echo ldr```
-- To read output of NFC sensor:
-  ```ros2 topic echo nfc```
+- To check values from the LDR and NFC sensor, run ```ros2 run <package_name> control ``` on the RPi first
+  - To read the values from the LDR:
+    ```ros2 topic echo ldr```
+  - To read output of NFC sensor:
+    ```ros2 topic echo nfc```
 
 ## Frontier detection and path searching (Optional)
 - Edit the cartographer configuration file:
